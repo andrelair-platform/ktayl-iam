@@ -9,6 +9,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 
+  // Behind ingress-nginx (TLS terminated there, HTTP to the pod). Trust the proxy's
+  // X-Forwarded-Proto so req.secure=true → express-session actually SETS the `secure`
+  // session cookie. Without this the cookie is dropped → OIDC `state` isn't stored →
+  // passport fails on callback → 401 before validate() ever runs.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.setGlobalPrefix('api');
   app.use(helmet());
   app.enableCors({
