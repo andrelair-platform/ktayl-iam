@@ -14,6 +14,12 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json ./package.json
 # Drop the base image's global npm (bundles a vulnerable node-tar; not needed at runtime).
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+# Trust the minicloud CA so the server-to-server OIDC calls (token/userinfo → Authentik,
+# which the cluster serves with the minicloud-CA cert) verify. CI injects CA_CERT (raw PEM,
+# NEVER base64) from the MINICLOUD_CA_CERT secret. Missing (local builds) → Node just warns.
+ARG CA_CERT=""
+RUN if [ -n "$CA_CERT" ]; then printf '%s' "$CA_CERT" > /usr/local/share/minicloud-ca.crt; fi
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/minicloud-ca.crt
 USER node
 EXPOSE 3000
 CMD ["node", "dist/main"]

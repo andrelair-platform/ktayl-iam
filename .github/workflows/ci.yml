@@ -111,6 +111,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            CA_CERT=${{ secrets.MINICLOUD_CA_CERT }}
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
