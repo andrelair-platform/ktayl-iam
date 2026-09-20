@@ -70,7 +70,7 @@ export default function Home() {
         Sign in with Authentik →
       </a>
       <p style={{ marginTop: 10, fontSize: 13, color: "#7a8894" }}>
-        Console access requires the <code>ktayl-admin</code> role.
+        Console access requires the <code>Platform Admins</code> role.
       </p>
 
       <section
