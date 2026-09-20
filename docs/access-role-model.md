@@ -79,9 +79,12 @@ a truthful reflection of it (you only see what you can actually reach).
 - **Least privilege + SoD:** engineering roles are additive & requestable, not default; `ktayl-admin` is
   break-glass (sealed, audited). SoD rules (e.g. requester ≠ approver) land with IGA-03/05.
 
-## 6. First application → the Homer portal
-See **[Homer RBAC spec](./homer-rbac-spec.md)** — the business/engineering portal split that consumes this
-model (birthright business view for all; engineering portal gated to the engineer groups above).
+## 6. Applications of this model
+- **[Homer RBAC spec](./homer-rbac-spec.md)** — the business/engineering portal split (birthright business
+  view for all; engineering portal gated to the engineer groups above). *Implemented (minicloud-gitops#1221).*
+- **[App authorization bindings](./app-authz-bindings.md)** — the **defense-in-depth** follow-up: bind each
+  underlying app's Authentik Application to its allowed engineer group(s) so the role gate holds **even with
+  a direct URL** (ADR-003), with a per-app matrix + staged runbook.
 
 ## 7. Cross-references
 [Brief](./brief.md) · [ADRs](./architecture/adr/000-index.md) · [Homer RBAC spec](./homer-rbac-spec.md) ·
