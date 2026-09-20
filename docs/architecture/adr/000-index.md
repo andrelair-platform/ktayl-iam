@@ -11,6 +11,7 @@
 | [005](#adr-005) | Least-privilege + birthright: `ktayl-business` default, engineering additive/requestable | Proposed | SA/SEC |
 | [006](#adr-006) | **Custom-build** the governance platform (NestJS + Next.js + Postgres) — not off-the-shelf MidPoint | Proposed | SA/TL |
 | [007](#adr-007) | **Dual approval (four-eyes): manager + role owner** before any grant is provisioned | Proposed | SA/SEC |
+| [008](#adr-008) | **Matricule** = immutable 6-digit employee ID (from ERPNext) = Authentik username | Proposed | SA/TL |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -89,3 +90,22 @@ reassigns to a backup (manager's manager / secondary owner). Every step is audit
 evidence. Requires the platform to know the **manager relationship** (ERPNext dependency) and each Role's
 **owner**. Cost: two approvals add latency to a grant — accepted (correctness > speed for access). A
 **break-glass** path (admin, sealed + heavily audited) exists for emergencies, outside the normal dual flow.
+
+## ADR-008 — Matricule: immutable employee ID as the user identifier {#adr-008}
+**Context.** Users need a **stable** identifier. Names and emails change (marriage, corrections, role
+moves); using them as keys corrupts joins + audit over time. An enterprise/insurer (HDI shape) keys on an
+immutable **matricule** (employee ID).
+**Decision (owner, 2026-09-20).** Every user has an immutable **matricule**:
+- **Format:** a **6-character, zero-padded string** (range `100000`–`999999`; stored as a **string**, never
+  an integer — no arithmetic, leading zeros preserved). **Never reused** (a leaver's matricule is retired).
+- **Source of truth = ERPNext HR** (the Employee ID) — the same HR system the platform reads managers from (S003).
+- **It IS the Authentik username** (login = the matricule, e.g. `100001` — option (a): unambiguous, enterprise-real).
+- **Technical PK in the IAM DB stays the Authentik `sub`** (cryptographically stable); the matricule is the
+  **business key** carried as an attribute → even if a username/handle ever changes, assignments + audit don't break.
+- **Email + display name stay human-readable** (e.g. `a.kanmegne@devandre.sbs`, "Andre Kanmegne") and mutable —
+  they're for people, not for keys.
+**Consequences.** Stable joins across **HR ↔ Authentik ↔ IAM ↔ every app** + a durable audit trail; the
+"log in with a number" feel of a real carrier. Cost: a matricule is less memorable than a name (accepted).
+**Migration:** existing name-based usernames (e.g. `kanmegnea`) move to matricules **deliberately** — mint the
+matricule in ERPNext → set it as the Authentik username → because the IAM platform keys on `sub`, nothing breaks.
+New users get a matricule at onboarding.
