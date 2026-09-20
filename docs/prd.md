@@ -22,9 +22,11 @@ Application  (e.g. Grafana, ktayl-claims, Homer-eng)
 - **Role** — a named entitlement *within* an application (maps to an Authentik group + optionally an in-app role); **each role has an _owner_** (approver #2).
 - **Assignment** — user has role R in app A (with grant reason, requester, **both approvers**, expiry).
 - **Request** — a pending assignment awaiting **dual approval** (manager + role owner).
-- **User + manager** — users come from **Authentik** (directory, read); each user's **manager** (approver #1)
-  comes from the **HR source of truth (ERPNext)** — the platform must know the org hierarchy to route
-  manager approval.
+- **User + manager** — users come from **Authentik** (directory, read). Each user has an immutable
+  **matricule** — a **6-digit employee ID** (from **ERPNext HR**), which **is the Authentik username**
+  (login = the matricule) and the platform's **business key**; the technical PK stays the Authentik `sub`
+  (see [ADR-008](./architecture/adr/000-index.md#adr-008)). Email + display name stay human-readable. Each
+  user's **manager** (approver #1) comes from **ERPNext** (the org hierarchy), so the platform can route manager approval.
 - **Directory** — the platform does **not** re-implement authentication; Authentik owns login.
 
 ## 3. In scope (v1)
