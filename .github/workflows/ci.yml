@@ -43,6 +43,10 @@ jobs:
       - run: npm run build
 
   # ── Build · scan · sign · SBOM (main only) — both images ────────────────────
+  # CI builds & PROVES the artifacts; it does NOT deploy or bump gitops. Promotion
+  # dev→prod is owned by KARGO (services/ktayl-iam/kargo/, per-image Warehouses like
+  # retrieva) → opens the gitops PR → Argo CD reconciles. Same model as the other
+  # custom services (gitops.md · ci-registry.md). Never add a bump-gitops step here.
   build-and-push:
     needs: [backend, frontend]
     if: github.ref_name == 'main' && github.event_name == 'push'
