@@ -2,11 +2,11 @@
 
 **Board:** Project #17 · **Initiative:** IS Foundations · **Home repo:** `ktayl-iam`
 
-**Identity & access governance (IGA)** for the ktayl-solution IS — role/entitlement management, access requests, certification, SoD, governing access to business applications.
+**A custom-built access-governance platform** (NestJS + Next.js + Postgres) on top of **Authentik** — per-application roles + user assignments, **dual-approval (manager + role owner)** access requests, provisioning Authentik groups so login enforces them. Certification, SoD.
 
 | ID | Epic | Priority |
 |---|---|---|
-| IGA-01 | IGA platform (MidPoint) — request → approval → provisioning | P1 |
+| IGA-01 | Access Governance platform (custom) — request → dual approval (manager + role owner) → provisioning | P1 |
 | IGA-02 | Role & entitlement model across business applications | P1 |
 | IGA-03 | Access certification / recertification campaigns | P2 |
 | IGA-04 | SCIM provisioning to business apps | P2 |
