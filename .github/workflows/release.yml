@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name:        ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        id: release
+        with:
+          token:         ${{ secrets.GITHUB_TOKEN }}
+          config-file:   release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # ── Dual-tag: the SHA is the canonical promotion identifier (Kargo/Argo pin the SHA);
+  # when release-please cuts a release, add the SemVer ALIAS to the SAME ghcr digests that
+  # ci.yml already built for this commit — for BOTH images. No rebuild (crane re-tags).
+  dual-tag-semver:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compute short SHA + SemVer
+        id: v
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          SEMVER=$(printf '%s' "${{ needs.release-please.outputs.tag_name }}" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          case "$SEMVER" in v*) : ;; *) SEMVER="v${SEMVER}" ;; esac
+          echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
+      - uses: imjasonh/setup-crane@v0.4
+      - name: Login to ghcr
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Add SemVer alias to each SHA image digest (backend + frontend)
+        run: |
+          SHA="${{ steps.v.outputs.sha }}"; SEMVER="${{ steps.v.outputs.semver }}"
+          for APP in backend frontend; do
+            IMG="ghcr.io/andrelair-platform/ktayl-iam-${APP}"
+            # ci.yml builds the SHA image on the same push — wait for it (up to ~10 min).
+            for i in $(seq 1 30); do
+              crane digest "$IMG:$SHA" >/dev/null 2>&1 && break
+              echo "waiting for $IMG:$SHA (ci.yml build)…"; sleep 20
+            done
+            DIGEST=$(crane digest "$IMG:$SHA")   # fails the job if the SHA image never appeared
+            crane tag "$IMG:$SHA" "$SEMVER"      # adds the tag to the SAME digest, registry-side
+            echo "✅ $IMG@$DIGEST now carries: $SHA (promotion) + $SEMVER (release alias)"
+          done
