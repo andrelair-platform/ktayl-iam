@@ -1,7 +1,7 @@
 ---
 id: S001-platform-scaffold-sso
 title: "Platform scaffold + deploy + SSO (NestJS + Next.js + Postgres)"
-status: Ready
+status: In Progress
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v1"

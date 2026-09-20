@@ -7,6 +7,26 @@
 
 BMAD stories live in `bmad/stories/` and sync to Issues on **Project #17** via the org-shared reusable workflow.
 
+## Repository structure
+
+```
+backend/    NestJS API — domain logic, dual-approval workflow, Authentik-sync engine  (TypeScript)
+frontend/   Next.js admin UI — app catalog, role editor, requests/approvals, who-has-what
+docs/       design set (brief · prd · architecture · access-role-model · ADRs · sprint plan)
+bmad/       stories → board #17
+```
+
+Datastore = PostgreSQL. Auth = Authentik OIDC (the platform never re-implements login). Stack rationale: ADR-006.
+
+## Getting started (local dev)
+
+```bash
+# backend  (--legacy-peer-deps: the Nest 12 scaffold's peer-dep graph needs it)
+cd backend && npm ci --legacy-peer-deps && npm run start:dev   # http://localhost:3000
+# frontend
+cd frontend && npm ci && npm run dev                            # http://localhost:3000 (use a different port)
+```
+
 ## Epic backlog
 
 | ID | Epic | Priority |
