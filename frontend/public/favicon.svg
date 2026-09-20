@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Shield shape -->
+  <path d="M4 2h24v12c0 8-5 15-12 18C9 29 4 22 4 14V2z" fill="#00375A"/>
+  <!-- Top accent line -->
+  <rect x="4" y="2" width="24" height="2.5" rx="0" fill="#E8690B"/>
+  <!-- K: vertical bar -->
+  <rect x="7" y="6" width="4" height="21" rx="1" fill="white"/>
+  <!-- K: upper arm -->
+  <line x1="11" y1="17" x2="24" y2="6" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- K: lower arm (orange) -->
+  <line x1="11" y1="17" x2="22" y2="26" stroke="#E8690B" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
