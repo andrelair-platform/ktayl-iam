@@ -1,48 +1,64 @@
-# Product Brief — Access Governance (IAM/IGA) (#17)
+# Product Brief — ktayl Access Governance Platform (#17)
 
-> **BMAD artefact — BRIEF.** Frames the access-governance need. **Status: DRAFT for review.**
+> **BMAD artefact — BRIEF.** Frames the business need. **Direction: a CUSTOM-BUILT access-governance
+> platform on top of Authentik** (not an off-the-shelf IGA install). **Status: DRAFT for review.**
+
+## The model in one line
+
+**Authentik is our "Entra"** — the directory + login (SSO) where **every employee** lives. On top of it we
+**build our own platform** that decides **which role a person gets in each application**, and pushes that
+decision into Authentik so login enforces it.
+
+```
+   every employee ──> Authentik (directory + SSO + enforcement)   ← the "Entra"
+                          ▲  groups/roles pushed in
+                          │
+   we BUILD this ──> ktayl-iam Access Governance Platform (custom app)
+                     "each app has roles → give each user the role they need for that app"
+```
 
 ## The need (concrete trigger)
 
-Every platform user today, once through Authentik SSO, can **see and reach every tool** — a business
-user and a platform engineer get the *same* view (e.g. the Homer portal lists ArgoCD, Vault, Grafana,
-Harbor next to Mail and ERPNext). There is **authentication** (SSO) and **network segmentation**
-(Tailscale for the internal tier), but **no role-based authorization**: no notion of "a business user
-gets business apps; an engineer gets the engineering platform." That is an **access-governance gap**, and
-it is exactly what **IAM/IGA #17** owns — not a per-app hack.
+Today, once a user is through Authentik SSO they can reach **every tool** — there is authentication but no
+**per-application authorization by role**. We fixed the visible symptom on the Homer dashboard (the
+[two-portal split](./homer-rbac-spec.md)), but the real need is a **governed way to say, for every app,
+who has which role and why** — and to grant/revoke it in one place. That is **access governance (IGA)**,
+and #17 owns it.
+
+## What we're building (and what we're NOT)
+
+- **We ARE building** a custom platform (a real app: API + admin UI + database) that models
+  **Applications → their Roles → user assignments**, runs **request → approval**, shows **"who has what"**,
+  and **syncs the result into Authentik groups** (which enforce at login).
+- **We are NOT** installing an off-the-shelf enterprise IGA suite (e.g. MidPoint). We build our own — it
+  fits how the rest of the IS is built, it's a strong portfolio piece, and it's exactly the "make an
+  application role-aware and give users the rights they need" capability we want. (MidPoint is recorded as
+  the buy-instead alternative in [ADR-006](./architecture/adr/000-index.md#adr-006).)
 
 ## Why identity is the control here (BYOD)
 
-ktayl is **BYOD — no managed endpoints** (`project-governance.md` *IS scope boundaries*): the perimeter
-**is identity**. So a **role & entitlement model** enforced at the identity layer isn't a nice-to-have —
-it's the *primary* control. Getting it right is the point of #17.
+ktayl is **BYOD — no managed endpoints** (`project-governance.md`): the perimeter **is identity**. So a
+governed role model at the identity layer is the **primary** control, not a nice-to-have.
 
-## What this brief scopes
+## v1 outcome (the thin slice)
 
-The **role & access-tier model** (IGA-02) + its **runtime enforcement** (Authentik groups today,
-MidPoint IGA as the governing source of truth) — with the **Homer portal split into role-based views** as
-the **first, visible application** of the model. It answers: *who is allowed to see/use what, and how is
-that decided, granted, and proven?*
+**Register an app + its roles → a user requests a role → it is _double-validated_ (the user's manager AND
+the role owner) → only then the platform creates/updates the matching Authentik group + membership → login
+now enforces it**, with a **"who has what"** view and a full audit trail. The **Homer portals + per-app
+access** ([app-authz-bindings](./app-authz-bindings.md)) are the **first apps it governs**.
 
-## Personas (the roles the model must express)
-
-- **Business user** — insurance staff (underwriting, claims, finance, compliance ops, servicing): business
-  apps only.
-- **Developer · DevOps/Platform · Data engineer · SRE** — the **engineering** roles that need the internal
-  platform (ArgoCD, Grafana, Vault, Harbor, observability, AI-ops).
-- **Admin / break-glass** — everything incl. restricted tools.
-
-## v1 outcome
-
-A **defined role model** (personas → access tiers → entitlements → Authentik groups), enforced so that
-**Homer shows a business user only their business + public apps, and the internal engineering platform is
-visible/reachable only to engineer roles** — with the same groups gating the underlying apps
-(defense-in-depth), and a path to MidPoint-governed request/approval/recertification.
+> **Dual approval is a core control, not a nice-to-have** — no role reaches Authentik on a single sign-off
+> (four-eyes: manager + role owner). See [ADR-007](./architecture/adr/000-index.md#adr-007).
 
 ## Out of scope (v1)
-Full MidPoint request-workflow build (IGA-01, later) · SCIM to every app (IGA-04, later) · SoD analytics ·
-PAM (IGA-05) · per-record data-level authz inside apps (that's each domain's own concern).
+Full request-workflow bells & whistles · SoD analytics (IGA-05) · SCIM to every business app (IGA-04, later)
+· recertification campaigns (IGA-03, later) · PAM · per-record data-level authz inside apps (each domain's own concern).
+
+## Users
+Admin / access owner (grants roles) · app owners (declare an app's roles) · approvers · every employee
+(requests access) · auditor (who-has-what evidence).
 
 ## Why now
-It's the **primary control** for a BYOD IS, it's the correct home for the Homer RBAC ask, and it produces
-**BC03 (déployer & sécuriser)** + DORA/ISO-27001 access-control evidence.
+It's the **primary control** for a BYOD IS, the correct home for the Homer RBAC ask, a **custom build** that
+suits our portfolio, and it produces **BC02 (concevoir) + BC03 (déployer & sécuriser)** + DORA/ISO-27001
+access-control evidence.

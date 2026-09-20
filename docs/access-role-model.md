@@ -1,9 +1,10 @@
 # Access Role & Tier Model (IGA-02)
 
 > **The governing artefact for who-can-access-what on the ktayl IS.** Personas → access tiers →
-> entitlements → **Authentik groups** (runtime enforcement) → **MidPoint** roles (governance source of
-> truth, target). Every app's authorization — starting with the Homer portal — is an *application* of this
-> model, never a per-app invention. **Status: DRAFT for review.**
+> entitlements → **Authentik groups** (runtime enforcement) → managed by the **custom Access Governance
+> Platform** (the system of record we build — [PRD](./prd.md) / [architecture](./architecture/solution-architecture.md)).
+> Every app's authorization — starting with the Homer portal — is an *application* of this model, never a
+> per-app invention. **Status: DRAFT for review.**
 
 ## 1. Access tiers (network + sensitivity)
 
@@ -30,7 +31,7 @@ Authentik forward-auth and Homer read.
 | **Admin / break-glass** | `ktayl-admin` | everything incl. Restricted |
 
 `ktayl-business` is the **birthright** group (every staff member). Engineering groups are **additive** and
-**requestable** (→ MidPoint approval, §5). "Engineer" in the Homer split = any of
+**requestable** (→ approval in the custom platform, §5). "Engineer" in the Homer split = any of
 `ktayl-developer | ktayl-devops | ktayl-data | ktayl-sre | ktayl-admin`.
 
 ## 3. Entitlement matrix (role → app group)
@@ -69,15 +70,20 @@ Layer 3 is what IGA-02 adds: today apps are only authenticated, not authorized b
 Authentik **Application** to its entitled group (§3) turns SSO into RBAC — and Homer's two portals become
 a truthful reflection of it (you only see what you can actually reach).
 
-## 5. Governance lifecycle (Authentik now → MidPoint target)
+## 5. Governance lifecycle (Authentik enforces · the custom platform governs)
 
-- **Now (runtime PEP):** Authentik **groups** are the enforcement point; membership set by hand.
-- **Target (source of truth):** **MidPoint IGA** owns the roles → **provisions** the Authentik groups
-  (birthright `ktayl-business`; requestable engineering roles), with **request → approval → provision**
-  (IGA-01), **recertification campaigns** (IGA-03), and **SCIM** to business apps (IGA-04). Authentik stays
-  the runtime PEP; MidPoint becomes the governed PAP/PDP.
+- **Enforcement (always):** **Authentik groups** are the runtime enforcement point (forward-auth / OIDC per app).
+- **Governance (what we build):** the **custom Access Governance Platform** ([PRD](./prd.md)) is the
+  **system of record** for Applications→Roles→assignments. It runs **request → approval → provision**
+  (IGA-01) and **writes the Authentik groups + memberships** (birthright `ktayl-business`; requestable
+  engineering roles), later adding **recertification** (IGA-03), **SCIM to business apps** (IGA-04), and
+  **SoD** (IGA-05). Authentik = IdP + PEP; the platform = PAP/source-of-truth. *(No MidPoint — we build our
+  own; see [ADR-006](./architecture/adr/000-index.md#adr-006).)*
+- **Interim (until the platform ships):** Authentik group membership is set **by hand** (the manual steps in
+  [homer-rbac-spec](./homer-rbac-spec.md) + [app-authz-bindings](./app-authz-bindings.md)); the platform
+  then automates exactly those grants.
 - **Least privilege + SoD:** engineering roles are additive & requestable, not default; `ktayl-admin` is
-  break-glass (sealed, audited). SoD rules (e.g. requester ≠ approver) land with IGA-03/05.
+  break-glass (sealed, audited). SoD rules (requester ≠ approver) land with IGA-03/05.
 
 ## 6. Applications of this model
 - **[Homer RBAC spec](./homer-rbac-spec.md)** — the business/engineering portal split (birthright business

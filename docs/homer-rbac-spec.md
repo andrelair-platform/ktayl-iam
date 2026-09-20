@@ -15,7 +15,7 @@ robust, GitOps-able pattern.
 
 | Portal | Host / tier | Who | Shows |
 |---|---|---|---|
-| **Company Portal** (business) | `homer.devandre.sbs` (Public) **and** `homer.10.0.0.200.nip.io` | **all** authenticated staff (birthright `ktayl-business`) | Business & Collaboration + Insurance domain apps + Vaultwarden + a *link out* to the eng portal (shown only to engineers) |
+| **Company Portal** (business) | `homer.devandre.sbs` (Public) **and** `homer.10.0.0.200.nip.io` | **all** authenticated staff (birthright `ktayl-business`) | Business & Collaboration + Insurance domain apps + Vaultwarden (no engineering URLs — see ACs) |
 | **Engineering Platform Portal** | `homer-eng.10.0.0.200.nip.io` (Internal, **Tailscale only**) | **engineer groups** (`ktayl-developer/devops/data/sre/admin`) | Infrastructure · Observability · Platform & DevOps · Identity & Secrets · AI/ML ops |
 
 Rationale: the business portal is safe to be public (business apps are already public-tier); the
