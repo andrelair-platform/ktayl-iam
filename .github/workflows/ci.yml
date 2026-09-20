@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --legacy-peer-deps
       - run: npm run lint
       - run: npm run build
       - run: npm test
@@ -35,12 +35,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --legacy-peer-deps
       - run: npm run lint
       - run: npm run build
 
-# NOTE (S001 follow-up):
-#   - pin committed lockfiles + switch to `npm ci` (blocked locally by an npm resolver
-#     bug on the dev box; CI's clean npm resolves fine — commit the lockfiles from a CI run).
-#   - add image build+push (Harbor dev / ghcr prod) + cosign keyless + SBOM per
-#     .claude/rules/ci-registry.md once the GAP wrapper chart lands.
+# --legacy-peer-deps: the Nest 12 scaffold's peer-dep graph trips an npm arborist bug
+# (`edgesOut`) without it; the flag resolves cleanly. Lockfiles are committed → npm ci.
+# NOTE (S001 follow-up): add image build+push (Harbor dev / ghcr prod) + cosign keyless +
+# SBOM per .claude/rules/ci-registry.md once the GAP wrapper chart lands.

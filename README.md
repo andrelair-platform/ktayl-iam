@@ -21,14 +21,11 @@ Datastore = PostgreSQL. Auth = Authentik OIDC (the platform never re-implements 
 ## Getting started (local dev)
 
 ```bash
-# backend
-cd backend && npm install && npm run start:dev   # http://localhost:3000
+# backend  (--legacy-peer-deps: the Nest 12 scaffold's peer-dep graph needs it)
+cd backend && npm ci --legacy-peer-deps && npm run start:dev   # http://localhost:3000
 # frontend
-cd frontend && npm install && npm run dev         # http://localhost:3000 (set a different port)
+cd frontend && npm ci && npm run dev                            # http://localhost:3000 (use a different port)
 ```
-
-> **Build gate = CI** (clean environment). A known npm resolver bug on some dev boxes can block a local
-> `npm install` for the backend; CI (`.github/workflows/ci.yml`) installs + builds both apps cleanly.
 
 ## Epic backlog
 
