@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 72" role="img" aria-label="ktayl-solution">
+  <defs>
+    <clipPath id="shield-clip-full">
+      <path d="M8 4h48v24c0 17-10 32-24 40C18 60 8 45 8 28V4z"/>
+    </clipPath>
+  </defs>
+
+  <!-- ── MARK ── -->
+  <path d="M8 4h48v24c0 17-10 32-24 40C18 60 8 45 8 28V4z" fill="#00375A"/>
+  <rect x="8" y="4" width="48" height="4" fill="#E8690B"/>
+  <g clip-path="url(#shield-clip-full)">
+    <rect x="16" y="12" width="9" height="50" rx="2" fill="white"/>
+    <line x1="24" y1="36" x2="52" y2="12" stroke="white" stroke-width="9" stroke-linecap="round"/>
+    <line x1="24" y1="36" x2="50" y2="60" stroke="#E8690B" stroke-width="9" stroke-linecap="round"/>
+  </g>
+
+  <!-- ── WORDMARK ── -->
+  <!-- Primary name -->
+  <text
+    x="76" y="36"
+    font-family="Inter, 'Neue Haas Grotesk', system-ui, sans-serif"
+    font-size="22"
+    font-weight="700"
+    letter-spacing="-0.5"
+    fill="#00375A"
+  >ktayl-solution</text>
+
+  <!-- Divider -->
+  <rect x="76" y="43" width="220" height="1.5" fill="#E8690B" opacity="0.6"/>
+
+  <!-- Tagline -->
+  <text
+    x="76" y="57"
+    font-family="Inter, 'Neue Haas Grotesk', system-ui, sans-serif"
+    font-size="9.5"
+    font-weight="500"
+    letter-spacing="2"
+    fill="#00375A"
+    opacity="0.6"
+  >SPECIALTY INSURANCE CONSULTING</text>
+</svg>
