@@ -52,6 +52,7 @@ jobs:
       id-token: write        # cosign keyless (OIDC)
       packages: write        # push to ghcr.io
     strategy:
+      fail-fast: false
       matrix:
         app: [backend, frontend]
     steps:
