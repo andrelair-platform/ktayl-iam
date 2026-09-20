@@ -1,7 +1,18 @@
+# deps / build
 node_modules/
+**/node_modules/
+backend/dist/
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+next-env.d.ts
+# env / secrets
+.env
+.env.*
+!.env.example
+# bmad tooling
 _bmad/
 _bmad-output/
+.claude/
+# os
 .DS_Store
-*.log
-dist/
-build/

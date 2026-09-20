@@ -7,6 +7,29 @@
 
 BMAD stories live in `bmad/stories/` and sync to Issues on **Project #17** via the org-shared reusable workflow.
 
+## Repository structure
+
+```
+backend/    NestJS API — domain logic, dual-approval workflow, Authentik-sync engine  (TypeScript)
+frontend/   Next.js admin UI — app catalog, role editor, requests/approvals, who-has-what
+docs/       design set (brief · prd · architecture · access-role-model · ADRs · sprint plan)
+bmad/       stories → board #17
+```
+
+Datastore = PostgreSQL. Auth = Authentik OIDC (the platform never re-implements login). Stack rationale: ADR-006.
+
+## Getting started (local dev)
+
+```bash
+# backend
+cd backend && npm install && npm run start:dev   # http://localhost:3000
+# frontend
+cd frontend && npm install && npm run dev         # http://localhost:3000 (set a different port)
+```
+
+> **Build gate = CI** (clean environment). A known npm resolver bug on some dev boxes can block a local
+> `npm install` for the backend; CI (`.github/workflows/ci.yml`) installs + builds both apps cleanly.
+
 ## Epic backlog
 
 | ID | Epic | Priority |
