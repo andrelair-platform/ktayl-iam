@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  type Relation,
   UpdateDateColumn,
 } from 'typeorm';
 import { Application } from './application.entity.js';
@@ -23,7 +24,7 @@ export class Role {
 
   @ManyToOne(() => Application, (app) => app.roles, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'application_id' })
-  application!: Application;
+  application!: Relation<Application>;
 
   @Column({ name: 'application_id', type: 'uuid' })
   applicationId!: string;

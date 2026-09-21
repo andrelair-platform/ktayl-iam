@@ -4,6 +4,7 @@ import {
   Entity,
   OneToMany,
   PrimaryGeneratedColumn,
+  type Relation,
   UpdateDateColumn,
 } from 'typeorm';
 import { Role } from './role.entity.js';
@@ -36,7 +37,7 @@ export class Application {
   description!: string | null;
 
   @OneToMany(() => Role, (role) => role.application)
-  roles!: Role[];
+  roles!: Relation<Role[]>;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
