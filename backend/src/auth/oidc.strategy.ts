@@ -16,7 +16,7 @@ function asStringArray(v: any): string[] {
 }
 
 /** Decode a JWT payload (no verification — passport already verified the signature). */
-function decodeJwtPayload(token: string): any {
+export function decodeJwtPayload(token: string): any {
   const parts = token.split('.');
   if (parts.length !== 3) return undefined;
   try {
@@ -34,7 +34,7 @@ function decodeJwtPayload(token: string): any {
  * scan EVERY arg for a `groups` array — an object's `.groups`/`._json.groups` (uiProfile /
  * idProfile) AND a raw id_token JWT string's decoded payload `.groups` (the reliable source).
  */
-function collectGroups(args: any[]): string[] {
+export function collectGroups(args: any[]): string[] {
   const found = new Set<string>();
   for (const a of args) {
     if (a && typeof a === 'object') {
@@ -47,8 +47,30 @@ function collectGroups(args: any[]): string[] {
   return [...found];
 }
 
-function pickProfile(args: any[]): any {
+export function pickProfile(args: any[]): any {
   return args.find((a) => a && typeof a === 'object' && (a._json || a.id || a.emails)) ?? {};
+}
+
+/**
+ * Pure authorization decision from the raw passport verify args: extract groups + profile,
+ * enforce the admin-group gate, and shape the AuthUser. Throws UnauthorizedException when the
+ * user isn't a member of `adminGroup`. Exported so it can be unit-tested against the exact arg
+ * shapes passport-openidconnect delivers (arity 3 = no groups → deny; arity 6 = id_token → allow).
+ */
+export function authorizeFromVerifyArgs(args: any[], adminGroup: string): AuthUser {
+  const groups = collectGroups(args);
+  const profile = pickProfile(args);
+  if (!groups.includes(adminGroup)) {
+    throw new UnauthorizedException(
+      'Not authorised for the Access Governance console (admin group required).',
+    );
+  }
+  return {
+    id: profile.id,
+    username: profile.username ?? profile.displayName ?? profile.id,
+    email: profile.emails?.[0]?.value ?? profile._json?.email,
+    groups,
+  };
 }
 
 /**
@@ -57,10 +79,12 @@ function pickProfile(args: any[]): any {
  * platform's own gate, distinct from the per-app authorization it will later manage.
  */
 @Injectable()
-// callbackArity 6 → passport-openidconnect passes (iss, uiProfile, idProfile, context, idToken,
-// done), so validate() receives the ID-token claims/JWT that carry `groups`. At the default
-// arity it only gets (iss, uiProfile, done) — no groups.
-export class OidcStrategy extends PassportStrategy(Strategy, 'openidconnect', 6) {
+// callbackArity 5 → passport-openidconnect passes (iss, profile, context, idToken, done), so
+// validate() receives the raw ID token (JWT) whose claims carry `groups`. Arity matters: its
+// dispatch table only has branches for 9/8/7/5/4 (else→3) — 6 is NOT a branch and silently
+// falls through to the 3-arg (iss, profile, done) shape with no idToken. 5 is the smallest
+// arity that includes idToken. (@nestjs/passport sets the callback's .length to this value.)
+export class OidcStrategy extends PassportStrategy(Strategy, 'openidconnect', 5) {
   private readonly adminGroup: string;
 
   constructor(config: ConfigService) {
@@ -79,16 +103,14 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'openidconnect', 6)
   }
 
   validate(...args: any[]): AuthUser {
-    const groups = collectGroups(args);
-    const profile = pickProfile(args);
-
-    // TEMP diagnostic (S001): show exactly what the strategy receives, to pin the groups claim.
+    // TEMP diagnostic (S001): show exactly what the strategy receives at runtime, to pin the
+    // groups claim / verify arity. Remove once the login is confirmed working end-to-end.
     // eslint-disable-next-line no-console
     console.log(
       '[oidc.validate] argc=%d adminGroup=%j groups=%j argShapes=%j',
       args.length,
       this.adminGroup,
-      groups,
+      collectGroups(args),
       args.map((a) =>
         a && typeof a === 'object'
           ? { keys: Object.keys(a).slice(0, 8), jsonKeys: a._json ? Object.keys(a._json) : undefined }
@@ -96,16 +118,6 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'openidconnect', 6)
       ),
     );
 
-    if (!groups.includes(this.adminGroup)) {
-      throw new UnauthorizedException(
-        'Not authorised for the Access Governance console (admin group required).',
-      );
-    }
-    return {
-      id: profile.id,
-      username: profile.username ?? profile.displayName ?? profile.id,
-      email: profile.emails?.[0]?.value ?? profile._json?.email,
-      groups,
-    };
+    return authorizeFromVerifyArgs(args, this.adminGroup);
   }
 }
