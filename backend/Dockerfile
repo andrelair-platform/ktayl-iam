@@ -19,7 +19,10 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 # secret (raw PEM, NEVER base64) — NOT a build-arg, which would split the multi-line PEM on
 # newlines into a broken single BEGIN line. Missing (local builds w/o the secret) → Node warns.
 RUN --mount=type=secret,id=ca_cert \
-    if [ -s /run/secrets/ca_cert ]; then cp /run/secrets/ca_cert /usr/local/share/minicloud-ca.crt; fi
+    if [ -s /run/secrets/ca_cert ]; then \
+      cp /run/secrets/ca_cert /usr/local/share/minicloud-ca.crt && \
+      chmod 0644 /usr/local/share/minicloud-ca.crt; \
+    fi   # secret mounts as root-only 0400 → chmod so the non-root `node` user can read the (public) CA
 ENV NODE_EXTRA_CA_CERTS=/usr/local/share/minicloud-ca.crt
 USER node
 EXPOSE 3000
