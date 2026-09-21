@@ -1,26 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { UnauthorizedException } from '@nestjs/common';
 import { collectGroups, decodeJwtPayload, authorizeFromVerifyArgs } from './oidc.strategy.js';
-
-const ADMIN = 'Platform Admins';
+import { ADMIN_GROUP as ADMIN, UI_PROFILE as uiProfile } from '../../test/fixtures/users.js';
 
 /** Build an unsigned JWT (header.payload.sig) — enough for payload decoding under test. */
 function jwt(claims: Record<string, unknown>): string {
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
   return `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64(claims)}.sig`;
 }
-
-/**
- * The userinfo profile passport-openidconnect builds — standard OIDC claims only, NO groups.
- * This is exactly what the strategy received at the default verify arity (the bug: groups=[]).
- */
-const uiProfile = {
-  id: 'hashed-sub',
-  displayName: 'kanmegnea',
-  username: '100001',
-  name: { familyName: '', givenName: 'kanmegnea' },
-  emails: [{ value: 'kanmegnea@gmail.com' }],
-};
 
 describe('decodeJwtPayload', () => {
   it('decodes the payload of a well-formed JWT', () => {
@@ -78,9 +65,9 @@ describe('authorizeFromVerifyArgs (admin-group gate)', () => {
     const args = ['iss', uiProfile, {}, idToken, () => {}];
     const user = authorizeFromVerifyArgs(args, ADMIN);
     expect(user).toMatchObject({
-      id: 'hashed-sub',
-      username: '100001',
-      email: 'kanmegnea@gmail.com',
+      id: uiProfile.id,
+      username: uiProfile.username,
+      email: uiProfile.emails[0].value,
     });
     expect(user.groups).toContain(ADMIN);
   });
