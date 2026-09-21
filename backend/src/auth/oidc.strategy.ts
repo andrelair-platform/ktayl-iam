@@ -103,21 +103,6 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'openidconnect', 5)
   }
 
   validate(...args: any[]): AuthUser {
-    // TEMP diagnostic (S001): show exactly what the strategy receives at runtime, to pin the
-    // groups claim / verify arity. Remove once the login is confirmed working end-to-end.
-    // eslint-disable-next-line no-console
-    console.log(
-      '[oidc.validate] argc=%d adminGroup=%j groups=%j argShapes=%j',
-      args.length,
-      this.adminGroup,
-      collectGroups(args),
-      args.map((a) =>
-        a && typeof a === 'object'
-          ? { keys: Object.keys(a).slice(0, 8), jsonKeys: a._json ? Object.keys(a._json) : undefined }
-          : typeof a,
-      ),
-    );
-
     return authorizeFromVerifyArgs(args, this.adminGroup);
   }
 }
