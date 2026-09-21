@@ -102,6 +102,15 @@ jobs:
             [registry."harbor.10.0.0.200.nip.io"]
               insecure = true
 
+      # Stage the CA to a FILE so BuildKit gets the whole multi-line PEM. Both `build-args:`
+      # and `secrets:` of build-push-action parse their input LINE-BY-LINE as id=value, so a
+      # multi-line secret value collapses to just its first line ('bad end line'). Passing the
+      # secret through an env var preserves newlines; `secret-files:` then reads the full file.
+      - name: Stage minicloud CA for BuildKit
+        env:
+          CA: ${{ secrets.MINICLOUD_CA_CERT }}
+        run: printf '%s' "$CA" > "${{ runner.temp }}/minicloud-ca.crt"
+
       - name: Build and push
         id: build
         uses: docker/build-push-action@v7
@@ -111,11 +120,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
-          # CA via a BuildKit secret, NOT build-args: build-args splits a multi-line value on
-          # newlines → a multi-line PEM collapses to just its BEGIN line (bad end line). A
-          # --mount=type=secret preserves the raw PEM exactly and keeps it out of image history.
-          secrets: |
-            ca_cert=${{ secrets.MINICLOUD_CA_CERT }}
+          secret-files: |
+            ca_cert=${{ runner.temp }}/minicloud-ca.crt
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
