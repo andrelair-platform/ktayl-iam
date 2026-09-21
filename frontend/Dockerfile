@@ -1,4 +1,5 @@
 # ktayl-iam frontend (Next.js) — multi-stage, standalone output
+ARG CACHEBUST=local   # unused here; declared so the shared CI build-arg doesn't warn
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./

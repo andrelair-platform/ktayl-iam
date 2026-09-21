@@ -127,6 +127,10 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           secret-files: |
             ca_cert=${{ runner.temp }}/minicloud-ca.crt
+          # single-line, safe as a build-arg; busts the CA RUN layer each commit (secret
+          # content isn't in the mount's cache key, so the CA copy would otherwise stay cached)
+          build-args: |
+            CACHEBUST=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.app }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}
 
