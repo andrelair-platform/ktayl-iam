@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { ValidationPipe } from '@nestjs/common';
 import session from 'express-session';
 import passport from 'passport';
 import helmet from 'helmet';
@@ -16,6 +17,10 @@ async function bootstrap() {
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
   app.setGlobalPrefix('api');
+  // Strip unknown props, reject extras, and coerce DTO types across all endpoints.
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  );
   app.use(helmet());
   app.enableCors({
     origin: config.get<string>('frontendUrl'),

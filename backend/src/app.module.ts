@@ -6,6 +6,7 @@ import { loadConfig, validateEnv } from './config/configuration.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CatalogModule } from './catalog/catalog.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { AuthModule } from './auth/auth.module.js';
     DatabaseModule,
     HealthModule,
     AuthModule,
+    CatalogModule,
   ],
   controllers: [AppController],
   providers: [AppService],
