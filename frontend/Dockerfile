@@ -1,5 +1,4 @@
 # ktayl-iam frontend (Next.js) — multi-stage, standalone output
-ARG CA_CERT=""   # unused (frontend needs no CA); declared to silence the CI build-arg warning
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
