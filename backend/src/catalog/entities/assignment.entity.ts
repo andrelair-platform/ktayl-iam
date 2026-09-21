@@ -5,6 +5,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  type Relation,
 } from 'typeorm';
 import { Role } from './role.entity.js';
 
@@ -26,7 +27,7 @@ export class Assignment {
 
   @ManyToOne(() => Role, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'role_id' })
-  role!: Role;
+  role!: Relation<Role>;
 
   @Column({ name: 'role_id', type: 'uuid' })
   roleId!: string;
