@@ -106,10 +106,15 @@ jobs:
       # and `secrets:` of build-push-action parse their input LINE-BY-LINE as id=value, so a
       # multi-line secret value collapses to just its first line ('bad end line'). Passing the
       # secret through an env var preserves newlines; `secret-files:` then reads the full file.
+      # NB: this only works if the MINICLOUD_CA_CERT org secret is itself stored MULTI-LINE
+      # (re-set 2026-09-21 from the raw 13-line PEM via `gh secret set … < ca.crt`; a
+      # newline-stripped secret makes every transport yield a one-line, unparseable cert).
       - name: Stage minicloud CA for BuildKit
         env:
           CA: ${{ secrets.MINICLOUD_CA_CERT }}
-        run: printf '%s' "$CA" > "${{ runner.temp }}/minicloud-ca.crt"
+        run: |
+          printf '%s' "$CA" > "${{ runner.temp }}/minicloud-ca.crt"
+          echo "staged CA line count: $(wc -l < "${{ runner.temp }}/minicloud-ca.crt")"  # must be >1
 
       - name: Build and push
         id: build
