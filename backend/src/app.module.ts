@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { DirectoryModule } from './directory/directory.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { CatalogModule } from './catalog/catalog.module.js';
     HealthModule,
     AuthModule,
     CatalogModule,
+    DirectoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
