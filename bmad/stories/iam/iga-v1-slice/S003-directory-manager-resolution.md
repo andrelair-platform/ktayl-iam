@@ -19,10 +19,16 @@ initiative: IS Foundations
 requests can be routed to the correct manager for approval.
 
 ## Acceptance criteria
-- [ ] AC-1: read **users + groups from Authentik** (read-only).
-- [ ] AC-2: read the **manager ↔ report hierarchy from ERPNext** (HR source of truth) → resolve any user's manager (approver #1).
-- [ ] AC-3 (fail): manager is **never** taken from the request payload — only from HR (threat T3).
-- [ ] AC-4 (fail): a user with no resolvable manager can't silently self-serve — routed to a flagged fallback approver.
+- [x] AC-1: read **users + groups from Authentik** (read-only) → `AuthentikClient` + `GET /api/directory/users|groups`. *(Live read needs the `ktayl-iam-svc` account granted `view_user`+`view_group` in Authentik — see Follow-ups; code + tests done.)*
+- [x] AC-2: read the **manager ↔ report hierarchy from ERPNext** → `HrClient.getManagerMatricule` (Employee `reports_to`, keyed on `employee_number`=matricule). *(Live lookup gated on HR population — see Follow-ups; code + tests done.)*
+- [x] AC-3 (fail): manager is **never** taken from the request payload — only from HR → `ManagerResolverService.resolveManager(matricule)` takes only the matricule; tested.
+- [x] AC-4 (fail): no resolvable manager → **flagged fallback approver** (`fallback:true` + reason) → tested + verified LIVE (HR unavailable → fallback to `100001`).
 
 ## DoD
-Manager lookup demoed for real employees. Ref: sprint plan S003 · NFR COR-2.
+- [x] Resolver + adapters built with 12 tests (resolver unit AC-3/AC-4, HR client reports_to parsing, controller integration).
+- [x] Live: `GET /api/directory/status` + `/manager/:matricule` (AC-4 fallback) verified on dev.
+- [ ] **Manager lookup demoed for real employees** — DEFERRED to HR population (ERPNext has 1 employee, no `reports_to`/matricule; workers crashlooping). Ref: sprint plan S003 · NFR COR-2.
+
+## Follow-ups (external provisioning — no code change)
+- **Authentik:** grant `ktayl-iam-svc` (pk 25) `authentik_core.view_user`+`view_group` (Role→Group) → AC-1 live read.
+- **ERPNext:** populate HR (employees with `employee_number`=matricule + `reports_to`) + mint an API key/secret → set `ERPNEXT_URL/API_KEY/API_SECRET` → AC-2 live lookup.

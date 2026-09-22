@@ -25,6 +25,17 @@ export interface AppConfig {
     scope: string;
     adminGroup: string;
   };
+  directory: {
+    /** Authentik API base (read-only directory), e.g. https://auth.devandre.sbs/api/v3 */
+    authentikApiUrl: string;
+    authentikApiToken: string;
+    /** ERPNext HR (manager source of truth). Blank creds → HR unavailable → fallback approver. */
+    erpnextUrl: string;
+    erpnextApiKey: string;
+    erpnextApiSecret: string;
+    /** Matricule that approves when a manager can't be resolved from HR (AC-4, flagged). */
+    fallbackApprover: string;
+  };
 }
 
 const REQUIRED = [
@@ -75,5 +86,23 @@ export function loadConfig(): AppConfig {
       scope: e.AUTHENTIK_SCOPE ?? 'openid profile email groups',
       adminGroup: e.ADMIN_GROUP ?? 'ktayl-admin',
     },
+    directory: {
+      authentikApiUrl: (e.AUTHENTIK_API_URL ?? authentikApiFromIssuer(e.AUTHENTIK_ISSUER)) as string,
+      authentikApiToken: (e.AUTHENTIK_API_TOKEN ?? '') as string,
+      erpnextUrl: (e.ERPNEXT_URL ?? '') as string,
+      erpnextApiKey: (e.ERPNEXT_API_KEY ?? '') as string,
+      erpnextApiSecret: (e.ERPNEXT_API_SECRET ?? '') as string,
+      fallbackApprover: (e.FALLBACK_APPROVER ?? '') as string,
+    },
   };
+}
+
+/** Derive the Authentik API base from the OIDC issuer origin (…/application/o/<app>/ → …/api/v3). */
+function authentikApiFromIssuer(issuer?: unknown): string {
+  if (typeof issuer !== 'string' || !issuer) return '';
+  try {
+    return `${new URL(issuer).origin}/api/v3`;
+  } catch {
+    return '';
+  }
 }
