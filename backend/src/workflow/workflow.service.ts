@@ -207,6 +207,23 @@ export class WorkflowService {
       );
   }
 
+  /**
+   * S009: the requests a given user may see without admin — the ones they RAISED plus the ones
+   * awaiting THEIR decision (they're an assigned manager/owner leg). Never the whole queue.
+   */
+  async listForUser(matricule: string): Promise<AccessRequest[]> {
+    const rows = await this.requests.find({
+      relations: { role: { application: true } },
+      order: { createdAt: 'DESC' },
+    });
+    return rows.filter(
+      (r) =>
+        r.requesterId === matricule ||
+        r.managerApprover === matricule ||
+        r.ownerApprover === matricule,
+    );
+  }
+
   async getRequest(id: string): Promise<AccessRequest> {
     const req = await this.requests.findOne({
       where: { id },

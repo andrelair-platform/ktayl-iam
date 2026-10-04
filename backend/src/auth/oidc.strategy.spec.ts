@@ -59,8 +59,8 @@ describe('collectGroups', () => {
   });
 });
 
-describe('authorizeFromVerifyArgs (admin-group gate)', () => {
-  it('admits a Platform Admins member and shapes the AuthUser from the profile', () => {
+describe('authorizeFromVerifyArgs (S008 multi-user login + isAdmin)', () => {
+  it('admits a Platform Admins member with isAdmin=true, shaped from the profile', () => {
     const idToken = jwt({ sub: 'hashed-sub', groups: [ADMIN, 'Direction IT / SI'] });
     const args = ['iss', uiProfile, {}, idToken, () => {}];
     const user = authorizeFromVerifyArgs(args, ADMIN);
@@ -68,18 +68,36 @@ describe('authorizeFromVerifyArgs (admin-group gate)', () => {
       id: uiProfile.id,
       username: uiProfile.username,
       email: uiProfile.emails[0].value,
+      isAdmin: true,
     });
     expect(user.groups).toContain(ADMIN);
   });
 
-  it('rejects (401) a user whose groups do not include the admin group', () => {
+  it('ADMITS a non-admin user with isAdmin=false (S008 — no longer 401 at login)', () => {
     const idToken = jwt({ sub: 'x', groups: ['Développeurs', 'QA'] });
     const args = ['iss', uiProfile, {}, idToken, () => {}];
-    expect(() => authorizeFromVerifyArgs(args, ADMIN)).toThrow(UnauthorizedException);
+    const user = authorizeFromVerifyArgs(args, ADMIN);
+    expect(user.isAdmin).toBe(false);
+    expect(user.username).toBe(uiProfile.username);
   });
 
-  it('rejects (401) when the id_token carries no groups at all (the pre-fix arity-3 case)', () => {
+  it('admits a user with no groups at all as isAdmin=false (arity-3, no staff gate)', () => {
     const args = ['iss', uiProfile, () => {}];
-    expect(() => authorizeFromVerifyArgs(args, ADMIN)).toThrow(UnauthorizedException);
+    const user = authorizeFromVerifyArgs(args, ADMIN);
+    expect(user.isAdmin).toBe(false);
+    expect(user.groups).toEqual([]);
+  });
+
+  it('when a staffGroup is configured, REJECTS (401) a user in neither staff nor admin', () => {
+    const idToken = jwt({ sub: 'x', groups: ['QA'] });
+    const args = ['iss', uiProfile, {}, idToken, () => {}];
+    expect(() => authorizeFromVerifyArgs(args, ADMIN, 'ktayl-staff')).toThrow(UnauthorizedException);
+  });
+
+  it('when a staffGroup is configured, ADMITS a staff member (isAdmin=false)', () => {
+    const idToken = jwt({ sub: 'x', groups: ['ktayl-staff'] });
+    const args = ['iss', uiProfile, {}, idToken, () => {}];
+    const user = authorizeFromVerifyArgs(args, ADMIN, 'ktayl-staff');
+    expect(user.isAdmin).toBe(false);
   });
 });

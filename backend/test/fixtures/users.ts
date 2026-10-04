@@ -15,18 +15,20 @@ export const UI_PROFILE = {
   emails: [{ value: 'test.admin@example.test' }],
 };
 
-/** A resolved admin session user (member of the admin group). */
+/** A resolved admin session user (member of the admin group → isAdmin). */
 export const ADMIN_USER: AuthUser = {
   id: 'test-sub-admin',
   username: '900001',
   email: 'test.admin@example.test',
   groups: [ADMIN_GROUP, 'Développeurs', 'QA'],
+  isAdmin: true,
 };
 
-/** A resolved non-admin session user (no admin group → must be rejected at the gate). */
+/** A resolved non-admin session user (S008: admitted, but isAdmin=false → @AdminOnly routes 403). */
 export const NON_ADMIN_USER: AuthUser = {
   id: 'test-sub-user',
   username: '900002',
   email: 'test.user@example.test',
   groups: ['Développeurs', 'QA'],
+  isAdmin: false,
 };
