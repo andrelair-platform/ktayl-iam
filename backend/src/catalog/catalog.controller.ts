@@ -4,6 +4,7 @@ import { CatalogService } from './catalog.service.js';
 import { CreateApplicationDto } from './dto/create-application.dto.js';
 import { CreateRoleDto } from './dto/create-role.dto.js';
 import type { AuthUser } from '../auth/oidc.strategy.js';
+import { AdminOnly } from '../auth/admin-only.decorator.js';
 
 /** matricule of the signed-in admin (the global AuthenticatedGuard guarantees a session). */
 function actorOf(req: Request): string {
@@ -24,6 +25,7 @@ export class CatalogController {
   }
 
   @Post()
+  @AdminOnly() // S009: cataloguing apps is an admin action (GETs stay open so requesters can browse)
   createApplication(@Body() dto: CreateApplicationDto, @Req() req: Request) {
     return this.catalog.createApplication(dto, actorOf(req));
   }
@@ -39,6 +41,7 @@ export class CatalogController {
   }
 
   @Post(':id/roles')
+  @AdminOnly() // S009: defining a role is an admin action
   addRole(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateRoleDto,

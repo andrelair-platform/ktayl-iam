@@ -9,6 +9,8 @@ export interface AuthUser {
   username: string;
   email?: string;
   groups: string[];
+  /** S008: true iff the user is in the admin group — drives the @AdminOnly authorization gate (S009). */
+  isAdmin: boolean;
 }
 
 function asStringArray(v: any): string[] {
@@ -52,17 +54,20 @@ export function pickProfile(args: any[]): any {
 }
 
 /**
- * Pure authorization decision from the raw passport verify args: extract groups + profile,
- * enforce the admin-group gate, and shape the AuthUser. Throws UnauthorizedException when the
- * user isn't a member of `adminGroup`. Exported so it can be unit-tested against the exact arg
- * shapes passport-openidconnect delivers (arity 3 = no groups → deny; arity 6 = id_token → allow).
+ * Pure authorization decision from the raw passport verify args: extract groups + profile, apply the
+ * login gate, and shape the AuthUser. **S008 multi-user login:** any authenticated user is admitted
+ * (so employees can be requesters/approvers), and `isAdmin` is derived from admin-group membership —
+ * authorization per-capability is then enforced by the @AdminOnly gate (S009), NOT at login. If a
+ * `staffGroup` is configured, membership in it (or the admin group) is REQUIRED — else any
+ * authenticated user passes. Exported so it's unit-testable against the exact passport arg shapes.
  */
-export function authorizeFromVerifyArgs(args: any[], adminGroup: string): AuthUser {
+export function authorizeFromVerifyArgs(args: any[], adminGroup: string, staffGroup = ''): AuthUser {
   const groups = collectGroups(args);
   const profile = pickProfile(args);
-  if (!groups.includes(adminGroup)) {
+  const isAdmin = groups.includes(adminGroup);
+  if (staffGroup && !isAdmin && !groups.includes(staffGroup)) {
     throw new UnauthorizedException(
-      'Not authorised for the Access Governance console (admin group required).',
+      `Not authorised for the Access Governance console (membership of "${staffGroup}" required).`,
     );
   }
   return {
@@ -70,13 +75,14 @@ export function authorizeFromVerifyArgs(args: any[], adminGroup: string): AuthUs
     username: profile.username ?? profile.displayName ?? profile.id,
     email: profile.emails?.[0]?.value ?? profile._json?.email,
     groups,
+    isAdmin,
   };
 }
 
 /**
- * Authentik OIDC (auth-code flow). ADMIN-ONLY: a user is accepted only if they are a member
- * of the admin group (ADMIN_GROUP). Everyone else is rejected at login (401) — this is the
- * platform's own gate, distinct from the per-app authorization it will later manage.
+ * Authentik OIDC (auth-code flow). S008 MULTI-USER: any authenticated Authentik user is admitted
+ * (optionally gated on STAFF_GROUP); admin-group membership sets `isAdmin`, and the @AdminOnly guard
+ * (S009) enforces per-capability authorization — login is no longer admin-only.
  */
 @Injectable()
 // callbackArity 5 → passport-openidconnect passes (iss, profile, context, idToken, done), so
@@ -86,6 +92,7 @@ export function authorizeFromVerifyArgs(args: any[], adminGroup: string): AuthUs
 // arity that includes idToken. (@nestjs/passport sets the callback's .length to this value.)
 export class OidcStrategy extends PassportStrategy(Strategy, 'openidconnect', 5) {
   private readonly adminGroup: string;
+  private readonly staffGroup: string;
 
   constructor(config: ConfigService) {
     const o = config.get<AppConfig['oidc']>('oidc')!;
@@ -100,9 +107,10 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'openidconnect', 5)
       scope: o.scope,
     });
     this.adminGroup = o.adminGroup;
+    this.staffGroup = o.staffGroup;
   }
 
   validate(...args: any[]): AuthUser {
-    return authorizeFromVerifyArgs(args, this.adminGroup);
+    return authorizeFromVerifyArgs(args, this.adminGroup, this.staffGroup);
   }
 }

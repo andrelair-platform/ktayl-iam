@@ -1,11 +1,13 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { AccessService } from './access.service.js';
+import { AdminOnly } from '../auth/admin-only.decorator.js';
 
 /**
  * The who-has-what + audit evidence API (S006). Admin/auditor-only via the global
  * AuthenticatedGuard (threat T7). Read-only — the audit trail is append-only at the DB level.
  */
+@AdminOnly() // S009 (threat T7): who-has-what + audit are admin/auditor-only
 @Controller('access')
 export class AccessController {
   constructor(private readonly access: AccessService) {}

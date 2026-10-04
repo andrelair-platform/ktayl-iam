@@ -1,21 +1,35 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request as ExpressRequest } from 'express';
 import type { AuthUser } from '../auth/oidc.strategy.js';
 import type { AppConfig } from '../config/configuration.js';
+import { AdminOnly } from '../auth/admin-only.decorator.js';
 import { WorkflowService } from './workflow.service.js';
 import { CreateRequestDto } from './dto/create-request.dto.js';
 import { DecideDto } from './dto/decide.dto.js';
 
-/** matricule of the signed-in admin (the global AuthenticatedGuard guarantees a session). */
+/** matricule of the signed-in user (the global AuthenticatedGuard guarantees a session). */
 function actorOf(req: ExpressRequest): string {
   return (req.user as AuthUser | undefined)?.username ?? 'unknown';
 }
+function isAdminOf(req: ExpressRequest): boolean {
+  return Boolean((req.user as AuthUser | undefined)?.isAdmin);
+}
 
 /**
- * The dual-approval workflow API (S004). File a request, decide a leg, and read requests (the
- * approvals queue / a user's requests). Admin-only via the global AuthenticatedGuard — the
- * platform is an admin console today; `requesterId`/approver matricules model the real actors.
+ * The dual-approval workflow API (S004) with multi-user authorization (S009). Any authenticated user
+ * may file their OWN request, read their own/to-approve requests, and decide a leg they're assigned.
+ * Admin-only actions (file-on-behalf, see-all, revoke) are gated by `@AdminOnly()` / server checks.
  */
 @Controller('requests')
 export class RequestsController {
@@ -31,17 +45,27 @@ export class RequestsController {
   @Post()
   create(@Body() dto: CreateRequestDto, @Req() req: ExpressRequest) {
     const actor = actorOf(req);
-    const requester = dto.requesterId ?? actor;
+    // S009 AC-5 (D3): a non-admin may only request for THEMSELVES; only an admin may file on behalf.
+    if (dto.requesterId && dto.requesterId !== actor && !isAdminOf(req)) {
+      throw new ForbiddenException('You can only request access for yourself.');
+    }
+    const requester = isAdminOf(req) ? (dto.requesterId ?? actor) : actor;
     return this.workflow.createRequest(requester, dto.roleId, actor);
   }
 
   @Get()
   list(
+    @Req() req: ExpressRequest,
     @Query('approver') approver?: string,
     @Query('requester') requester?: string,
     @Query('status') status?: string,
   ) {
-    return this.workflow.listRequests({ approver, requester, status });
+    // S009 AC-3: an admin sees ALL requests (honours the filters); a non-admin sees ONLY their own
+    // requests + the ones awaiting their approval — never the whole queue.
+    if (isAdminOf(req)) {
+      return this.workflow.listRequests({ approver, requester, status });
+    }
+    return this.workflow.listForUser(actorOf(req));
   }
 
   @Get(':id')
@@ -65,6 +89,7 @@ export class RequestsController {
   }
 
   @Post('assignments/:id/revoke')
+  @AdminOnly() // S009: revoking someone's granted access is an admin action
   revoke(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {
     return this.workflow.revoke(id, actorOf(req));
   }

@@ -24,6 +24,12 @@ export interface AppConfig {
     callbackURL: string;
     scope: string;
     adminGroup: string;
+    /**
+     * S008 multi-user login: if set, a user must be in this birthright/staff group (or the admin
+     * group) to reach the console; if EMPTY (default) any authenticated Authentik user is admitted
+     * (Authentik's app binding is the outer gate). `adminGroup` membership → AuthUser.isAdmin.
+     */
+    staffGroup: string;
   };
   directory: {
     /** Authentik API base (read-only directory), e.g. https://auth.devandre.sbs/api/v3 */
@@ -106,6 +112,7 @@ export function loadConfig(): AppConfig {
       // Real Authentik taxonomy — the admin group is "Platform Admins" (the old `ktayl-admin`
       // default never existed and 401'd every login; the overlay already sets this).
       adminGroup: e.ADMIN_GROUP ?? 'Platform Admins',
+      staffGroup: (e.STAFF_GROUP ?? '') as string, // empty = admit any authenticated user (S008)
     },
     directory: {
       authentikApiUrl: (e.AUTHENTIK_API_URL ?? authentikApiFromIssuer(e.AUTHENTIK_ISSUER)) as string,
