@@ -233,6 +233,22 @@ export class WorkflowService {
     return req;
   }
 
+  /** S010: the requester cancels their OWN still-pending request (nothing was provisioned). */
+  async cancel(requestId: string, actor: string): Promise<AccessRequest> {
+    const req = await this.requests.findOne({ where: { id: requestId } });
+    if (!req) throw new NotFoundException(`request ${requestId} not found`);
+    if (req.requesterId !== actor) {
+      throw new ForbiddenException('you can only cancel your own request');
+    }
+    if (req.status !== 'pending') {
+      throw new ConflictException(`request is already ${req.status} and cannot be cancelled`);
+    }
+    req.status = 'cancelled';
+    await this.requests.save(req);
+    await this.audit.record(actor, 'request.cancelled', 'request', req.id, { by: actor });
+    return req;
+  }
+
   /** Revoke an active assignment (removes the Authentik membership via S005). */
   async revoke(assignmentId: string, actor: string): Promise<Assignment> {
     const a = await this.assignments.findOne({ where: { id: assignmentId }, relations: { role: true } });

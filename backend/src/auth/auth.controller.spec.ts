@@ -65,11 +65,11 @@ describe('AuthController (integration)', () => {
       .expect(ADMIN_USER);
   });
 
-  it('GET /auth/callback (public) redirects to the frontend after login', () => {
+  it('GET /auth/callback (public) redirects to the role hub (/me) after login', () => {
     return request(app.getHttpServer())
       .get('/auth/callback')
       .expect(302)
-      .expect('Location', FRONTEND_URL);
+      .expect('Location', `${FRONTEND_URL}/me`);
   });
 
   it('POST /auth/logout (public) tears down the session and returns 204', () => {

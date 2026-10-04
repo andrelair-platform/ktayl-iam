@@ -88,6 +88,12 @@ export class RequestsController {
     return this.workflow.decide(id, approver, dto.decision, dto.comment, actor);
   }
 
+  @Post(':id/cancel')
+  cancel(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {
+    // S010: any authenticated user; the service enforces "requester-only, still-pending".
+    return this.workflow.cancel(id, actorOf(req));
+  }
+
   @Post('assignments/:id/revoke')
   @AdminOnly() // S009: revoking someone's granted access is an admin action
   revoke(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {

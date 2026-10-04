@@ -118,4 +118,23 @@ describe('WorkflowService — dual approval (S004, ADR-007)', () => {
       ConflictException,
     );
   });
+
+  describe('cancel (S010 — requester cancels own pending)', () => {
+    it('cancels a pending request raised by the actor', async () => {
+      await createReq();
+      const r = await ctx.svc.cancel('req-1', REQUESTER);
+      expect(r.status).toBe('cancelled');
+    });
+
+    it('rejects cancel by someone other than the requester', async () => {
+      await createReq();
+      await expect(ctx.svc.cancel('req-1', OWNER)).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('refuses to cancel a request that is no longer pending', async () => {
+      await createReq();
+      await ctx.svc.decide('req-1', MANAGER, 'denied', undefined, MANAGER); // → denied
+      await expect(ctx.svc.cancel('req-1', REQUESTER)).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
 });
