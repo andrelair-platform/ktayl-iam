@@ -1,7 +1,7 @@
 ---
 id: S006-who-has-what-audit
 title: "Who-has-what views + immutable audit + export"
-status: Ready
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v1"
