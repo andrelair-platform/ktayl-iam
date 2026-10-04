@@ -70,8 +70,8 @@ export default function Home() {
         Sign in with Authentik →
       </a>
       <p style={{ marginTop: 10, fontSize: 13, color: "#7a8894" }}>
-        Console access requires the <code>Platform Admins</code> role. Already signed in?{" "}
-        <a href="/admin" style={{ color: ORANGE, fontWeight: 600 }}>Open the catalog →</a>
+        Any employee can sign in to request access &amp; approve what&apos;s assigned to them. Already signed in?{" "}
+        <a href="/me" style={{ color: ORANGE, fontWeight: 600 }}>Open your console →</a>
       </p>
 
       <section

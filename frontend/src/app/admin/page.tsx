@@ -44,7 +44,18 @@ export default function AdminCatalog() {
   const [apps, setApps] = useState<Application[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [unauth, setUnauth] = useState(false);
+  const [denied, setDenied] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // S009/S010: the admin console is admin-only — a non-admin is sent to their hub, not shown admin UI.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => { if (active && m && !m.isAdmin) setDenied(true); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const reload = useCallback(async () => {
     try {
@@ -68,6 +79,17 @@ export default function AdminCatalog() {
       active = false;
     };
   }, []);
+
+  if (denied) {
+    return (
+      <Shell>
+        <Card>
+          <p style={{ margin: 0, color: "#3b4a55" }}>The admin console requires the Access Governance admin role.</p>
+          <a href="/me" style={btn}>Go to your console →</a>
+        </Card>
+      </Shell>
+    );
+  }
 
   if (unauth) {
     return (

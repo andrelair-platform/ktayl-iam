@@ -23,12 +23,12 @@ export class AuthController {
     // handled by the guard (redirect)
   }
 
-  // OIDC redirect target — on success the session is established → back to the UI.
+  // OIDC redirect target — on success the session is established → land on the role-aware hub (S010).
   @Public()
   @UseGuards(OidcAuthGuard)
   @Get('callback')
   callback(@Res() res: Response): void {
-    res.redirect(this.config.get<string>('frontendUrl')!);
+    res.redirect(`${this.config.get<string>('frontendUrl')!.replace(/\/$/, '')}/me`);
   }
 
   // The current admin (session required by the global guard).

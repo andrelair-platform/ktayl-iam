@@ -46,6 +46,17 @@ export default function WorkflowConsole() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [unauth, setUnauth] = useState(false);
+  const [denied, setDenied] = useState(false);
+
+  // S009/S010: admin-only console — a non-admin is sent to their hub (this page calls admin-only APIs).
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => { if (active && m && !m.isAdmin) setDenied(true); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const reload = useCallback(async () => {
     try {
@@ -79,6 +90,17 @@ export default function WorkflowConsole() {
       void reload();
     } catch (e) { setError((e as Error).message); }
   };
+
+  if (denied) {
+    return (
+      <Shell>
+        <div style={card}>
+          <p style={{ margin: 0, color: "#3b4a55" }}>This console requires the Access Governance admin role.</p>
+          <a href="/me" style={btn}>Go to your console →</a>
+        </div>
+      </Shell>
+    );
+  }
 
   if (unauth) {
     return (
