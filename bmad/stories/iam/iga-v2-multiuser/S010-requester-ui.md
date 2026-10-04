@@ -1,7 +1,7 @@
 ---
 id: S010-requester-ui
 title: "Self-service requester experience (role-aware UI)"
-status: Draft
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v2 (multi-user)"
