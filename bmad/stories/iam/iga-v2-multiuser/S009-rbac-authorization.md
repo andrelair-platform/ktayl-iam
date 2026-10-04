@@ -1,7 +1,7 @@
 ---
 id: S009-rbac-authorization
 title: "Role-based authorization — AdminOnly guard + requester/approver scoping"
-status: Draft
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v2 (multi-user)"
