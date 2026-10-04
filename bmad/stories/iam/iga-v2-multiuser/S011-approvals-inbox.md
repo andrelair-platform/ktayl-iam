@@ -1,7 +1,7 @@
 ---
 id: S011-approvals-inbox
 title: "Approvals inbox — decide your legs as the signed-in approver"
-status: Draft
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v2 (multi-user)"
