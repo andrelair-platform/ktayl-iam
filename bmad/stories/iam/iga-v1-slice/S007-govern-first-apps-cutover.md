@@ -1,7 +1,7 @@
 ---
 id: S007-govern-first-apps-cutover
 title: "Cutover — govern Homer-eng / Grafana / ArgoCD through the platform"
-status: Ready
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v1"

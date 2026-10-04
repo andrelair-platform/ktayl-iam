@@ -1,7 +1,7 @@
 ---
 id: S004-dual-approval-workflow
 title: "Access request → DUAL approval (manager + role owner, four-eyes)"
-status: Ready
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v1"

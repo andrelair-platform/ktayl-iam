@@ -1,7 +1,7 @@
 ---
 id: S005-authentik-sync-engine
 title: "Authentik sync engine (provision on both-approved + reconcile drift)"
-status: Ready
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v1"
