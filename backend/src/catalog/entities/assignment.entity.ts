@@ -44,6 +44,18 @@ export class Assignment {
   @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true })
   revokedAt!: Date | null;
 
+  /**
+   * When the Authentik sync engine (S005) last reconciled this assignment to a real group
+   * membership. `null` = pending-sync (granted but not yet enforced, or needs re-sync after a
+   * failure) → the reconcile job will apply it. Set to `now()` once the membership is confirmed.
+   */
+  @Column({ name: 'synced_at', type: 'timestamptz', nullable: true })
+  syncedAt!: Date | null;
+
+  /** Last sync error (if any) — surfaced for drift alerting; cleared on a successful sync. */
+  @Column({ name: 'last_sync_error', type: 'text', nullable: true })
+  lastSyncError!: string | null;
+
   @CreateDateColumn({ name: 'granted_at' })
   grantedAt!: Date;
 }
