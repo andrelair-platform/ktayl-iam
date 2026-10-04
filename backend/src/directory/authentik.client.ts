@@ -13,10 +13,19 @@ export interface DirectoryGroup {
   name: string;
   memberCount: number;
 }
+interface AkGroup {
+  pk: string; // uuid
+  name: string;
+  users: number[]; // user integer pks
+  users_obj?: { pk: number; username: string }[];
+}
 
 /**
- * Read-only Authentik directory adapter (AC-1) — lists the users + groups Authentik knows about.
- * Uses the ktayl-iam-svc API token; NEVER writes here (provisioning is S005). All calls are GET.
+ * Authentik adapter — reads the directory (S003, AC-1) AND writes group memberships (S005). Reads
+ * use GET; the sync engine uses `ensureGroup` / `addUserToGroup` / `removeUserFromGroup`, all
+ * idempotent (membership is checked before mutating). Auth is the `ktayl-iam-svc` token, which MUST
+ * be least-privilege (groups + memberships only — threat T4); this client never touches flows,
+ * providers, or user credentials.
  */
 @Injectable()
 export class AuthentikClient {
@@ -42,6 +51,24 @@ export class AuthentikClient {
     return res.json() as Promise<T>;
   }
 
+  private async send<T>(method: 'POST' | 'PATCH', path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${this.base}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Authentik ${method} ${path} → ${res.status} ${txt}`.trim());
+    }
+    return (res.status === 204 ? ({} as T) : ((await res.json()) as T));
+  }
+
+  // ── reads (S003) ──────────────────────────────────────────────────────────
   async listUsers(): Promise<DirectoryUser[]> {
     const data = await this.get<{ results: any[] }>('/core/users/?page_size=200');
     return (data.results ?? []).map((u) => ({
@@ -67,5 +94,59 @@ export class AuthentikClient {
       `/core/users/?username=${encodeURIComponent(username)}`,
     );
     return (data.results ?? []).some((u) => String(u.username) === username);
+  }
+
+  // ── writes + membership (S005) ──────────────────────────────────────────────
+  /** Resolve a matricule (username) to its Authentik integer pk, or null if unknown. */
+  async getUserPk(username: string): Promise<number | null> {
+    const data = await this.get<{ results: any[] }>(
+      `/core/users/?username=${encodeURIComponent(username)}`,
+    );
+    const u = (data.results ?? []).find((x) => String(x.username) === username);
+    return u ? Number(u.pk) : null;
+  }
+
+  /** Fetch a group by exact name (with its member pks + usernames), or null. */
+  async getGroupByName(name: string): Promise<AkGroup | null> {
+    const data = await this.get<{ results: AkGroup[] }>(
+      `/core/groups/?name=${encodeURIComponent(name)}&include_users=true`,
+    );
+    return (data.results ?? []).find((g) => g.name === name) ?? null;
+  }
+
+  /** Get-or-create a group by name (idempotent); returns its pk. */
+  async ensureGroup(name: string): Promise<AkGroup> {
+    const existing = await this.getGroupByName(name);
+    if (existing) return existing;
+    this.log.log(`creating Authentik group "${name}"`);
+    const created = await this.send<AkGroup>('POST', '/core/groups/', { name });
+    return { pk: created.pk, name: created.name, users: created.users ?? [] };
+  }
+
+  /** The usernames currently in a group (for reconcile); [] if the group doesn't exist. */
+  async groupMemberUsernames(name: string): Promise<string[]> {
+    const g = await this.getGroupByName(name);
+    if (!g) return [];
+    if (g.users_obj?.length) return g.users_obj.map((u) => String(u.username));
+    // fall back to resolving pks (rare — include_users should populate users_obj)
+    return [];
+  }
+
+  /** Add a user to a group (idempotent — no-op if already a member). Creates the group if needed. */
+  async addUserToGroup(username: string, groupName: string): Promise<void> {
+    const group = await this.ensureGroup(groupName);
+    const pk = await this.getUserPk(username);
+    if (pk === null) throw new Error(`Authentik has no user with matricule "${username}"`);
+    if ((group.users ?? []).includes(pk)) return; // already a member
+    await this.send('POST', `/core/groups/${group.pk}/add_user/`, { pk });
+  }
+
+  /** Remove a user from a group (idempotent — no-op if the group/user/membership is absent). */
+  async removeUserFromGroup(username: string, groupName: string): Promise<void> {
+    const group = await this.getGroupByName(groupName);
+    if (!group) return;
+    const pk = await this.getUserPk(username);
+    if (pk === null || !(group.users ?? []).includes(pk)) return; // nothing to remove
+    await this.send('POST', `/core/groups/${group.pk}/remove_user/`, { pk });
   }
 }

@@ -40,6 +40,18 @@ export class Request {
   @Column({ name: 'role_id', type: 'uuid' })
   roleId!: string;
 
+  /**
+   * The resolved approvers for the two legs, frozen at request time (S004). Approver #1 (manager)
+   * comes from HR via the resolver; approver #2 (owner) is the role owner. Storing them makes the
+   * four-eyes decision deterministic + auditable, and lets a self-approval / same-person clash be
+   * reassigned to a backup ONCE here (see `WorkflowService.createRequest`), not re-resolved later.
+   */
+  @Column({ name: 'manager_approver', type: 'varchar', length: 32, nullable: true })
+  managerApprover!: string | null;
+
+  @Column({ name: 'owner_approver', type: 'varchar', length: 32, nullable: true })
+  ownerApprover!: string | null;
+
   @Column({ type: 'varchar', length: 20, default: 'pending' })
   status!: RequestStatus;
 

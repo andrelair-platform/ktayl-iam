@@ -36,6 +36,25 @@ export interface AppConfig {
     /** Matricule that approves when a manager can't be resolved from HR (AC-4, flagged). */
     fallbackApprover: string;
   };
+  workflow: {
+    /**
+     * DEV-ONLY: let an admin pass the acting `approver` matricule on a decision (to demo four-eyes
+     * from the single admin console before multi-user login exists). The server STILL enforces
+     * approver ≠ requester and approver-must-match-an-assigned-leg. Default false → prod uses the
+     * real signed-in approver only.
+     */
+    allowApproverOverride: boolean;
+  };
+  sync: {
+    /**
+     * Authentik groups the platform EXCLUSIVELY owns — only here will the reconcile REMOVE a
+     * hand-added membership. For every other governed group reconcile only RE-ADDS missing members
+     * (heals hand-removal) and ALERTS on extras, so it can never nuke a hand-managed group's
+     * membership (e.g. `Platform Admins`). Empty by default = safe (add + alert only). Env:
+     * RECONCILE_EXCLUSIVE_GROUPS (comma-separated).
+     */
+    exclusiveGroups: string[];
+  };
 }
 
 const REQUIRED = [
@@ -84,7 +103,9 @@ export function loadConfig(): AppConfig {
       clientSecret: e.AUTHENTIK_CLIENT_SECRET as string,
       callbackURL: e.AUTHENTIK_CALLBACK_URL as string,
       scope: e.AUTHENTIK_SCOPE ?? 'openid profile email groups',
-      adminGroup: e.ADMIN_GROUP ?? 'ktayl-admin',
+      // Real Authentik taxonomy — the admin group is "Platform Admins" (the old `ktayl-admin`
+      // default never existed and 401'd every login; the overlay already sets this).
+      adminGroup: e.ADMIN_GROUP ?? 'Platform Admins',
     },
     directory: {
       authentikApiUrl: (e.AUTHENTIK_API_URL ?? authentikApiFromIssuer(e.AUTHENTIK_ISSUER)) as string,
@@ -93,6 +114,15 @@ export function loadConfig(): AppConfig {
       erpnextApiKey: (e.ERPNEXT_API_KEY ?? '') as string,
       erpnextApiSecret: (e.ERPNEXT_API_SECRET ?? '') as string,
       fallbackApprover: (e.FALLBACK_APPROVER ?? '') as string,
+    },
+    workflow: {
+      allowApproverOverride: (e.ALLOW_APPROVER_OVERRIDE ?? 'false') === 'true',
+    },
+    sync: {
+      exclusiveGroups: String(e.RECONCILE_EXCLUSIVE_GROUPS ?? '')
+        .split(',')
+        .map((g) => g.trim())
+        .filter(Boolean),
     },
   };
 }

@@ -82,7 +82,10 @@ export default function AdminCatalog() {
 
   return (
     <Shell>
-      <h1 style={{ fontSize: 30, fontWeight: 800, color: NAVY, margin: "0 0 4px" }}>Application &amp; role catalog</h1>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <h1 style={{ fontSize: 30, fontWeight: 800, color: NAVY, margin: "0 0 4px" }}>Application &amp; role catalog</h1>
+        <a href="/admin/requests" style={{ color: ORANGE, fontWeight: 600, fontSize: 14 }}>Access workflow →</a>
+      </div>
       <p style={{ color: "#3b4a55", marginTop: 0 }}>
         The source of truth for what applications exist, what roles they have, and who owns each role.
       </p>
