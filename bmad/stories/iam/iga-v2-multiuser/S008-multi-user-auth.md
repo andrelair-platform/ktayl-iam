@@ -1,7 +1,7 @@
 ---
 id: S008-multi-user-auth
 title: "Multi-user authentication — admit any authenticated employee (drop admin-only login)"
-status: Draft
+status: Done
 type: Story
 epic: iam
 milestone: "IGA — Access Governance v2 (multi-user)"
