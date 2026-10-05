@@ -12,6 +12,7 @@ import { DirectoryModule } from './directory/directory.module.js';
 import { SyncModule } from './sync/sync.module.js';
 import { WorkflowModule } from './workflow/workflow.module.js';
 import { AccessModule } from './access/access.module.js';
+import { LifecycleModule } from './lifecycle/lifecycle.module.js';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AccessModule } from './access/access.module.js';
     SyncModule, // S005 — Authentik sync engine
     WorkflowModule, // S004 — dual-approval workflow
     AccessModule, // S006 — who-has-what + audit
+    LifecycleModule, // S015/S016 — HR Joiner intake + workspace provisioning
   ],
   controllers: [AppController],
   providers: [AppService],
