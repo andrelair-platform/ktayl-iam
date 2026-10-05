@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DirectoryModule } from '../directory/directory.module.js';
+import { Assignment } from '../catalog/entities/assignment.entity.js';
 import { Identity } from './entities/identity.entity.js';
 import { LifecycleService } from './lifecycle.service.js';
 import { StalwartClient } from './stalwart.client.js';
@@ -12,7 +13,7 @@ import { HrLifecycleConsumer } from './nats.consumer.js';
  * + identity record). Reuses the AuthentikClient from DirectoryModule.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Identity]), DirectoryModule],
+  imports: [TypeOrmModule.forFeature([Identity, Assignment]), DirectoryModule],
   providers: [LifecycleService, StalwartClient, HrLifecycleConsumer],
   exports: [LifecycleService],
 })

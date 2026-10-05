@@ -33,9 +33,23 @@ export class Identity {
   @Column({ type: 'varchar', length: 60, nullable: true })
   job!: string | null;
 
-  /** Lifecycle status mirrored from HR: active (joiner/mover) | left (leaver). */
+  /**
+   * Lifecycle status: active (joiner/mover) | leaving (leaver event received, revocation SCHEDULED
+   * for the day after offboardDate) | left (revocation applied — all access removed). S017.
+   */
   @Column({ type: 'varchar', length: 20, default: 'active' })
   status!: string;
+
+  /**
+   * The effective leave/relieving date from HR (S017). Revocation runs on the FIRST daily pass
+   * STRICTLY AFTER this date — HR sets the date, the system auto-revokes the next day. Null = active.
+   */
+  @Column({ name: 'offboard_date', type: 'date', nullable: true })
+  offboardDate!: string | null;
+
+  /** When the scheduled leaver revocation was applied (idempotency guard; null until revoked). */
+  @Column({ name: 'deprovisioned_at', type: 'timestamptz', nullable: true })
+  deprovisionedAt!: Date | null;
 
   /** true once the Authentik user exists + is in the birthright group (idempotency guard). */
   @Column({ name: 'authentik_provisioned', type: 'boolean', default: false })

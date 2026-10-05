@@ -118,6 +118,28 @@ export class AuthentikClient {
     return Number(created.pk);
   }
 
+  /**
+   * Disable a user (S017 Leaver): set is_active=false → blocks ALL SSO login immediately (every
+   * app, default + business), the catch-all no-dangling-access control. Idempotent (no-op if the
+   * user is unknown or already disabled). Returns true if a user was found + disabled/confirmed.
+   */
+  async disableUser(username: string): Promise<boolean> {
+    const pk = await this.getUserPk(username);
+    if (pk === null) return false;
+    await this.send('PATCH', `/core/users/${pk}/`, { is_active: false });
+    this.log.log(`disabled Authentik user "${username}"`);
+    return true;
+  }
+
+  /** The group names a user is currently a member of (S017 — to remove them all). [] if unknown. */
+  async getUserGroups(username: string): Promise<string[]> {
+    const data = await this.get<{ results: any[] }>(
+      `/core/users/?username=${encodeURIComponent(username)}`,
+    );
+    const u = (data.results ?? []).find((x) => String(x.username) === username);
+    return u ? ((u.groups_obj ?? []).map((g: any) => String(g.name)) as string[]) : [];
+  }
+
   // ── writes + membership (S005) ──────────────────────────────────────────────
   /** Resolve a matricule (username) to its Authentik integer pk, or null if unknown. */
   async getUserPk(username: string): Promise<number | null> {
