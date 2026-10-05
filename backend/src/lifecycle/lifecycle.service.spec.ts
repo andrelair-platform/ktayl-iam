@@ -56,7 +56,7 @@ function makeService(repo: ReturnType<typeof fakeRepo>, assignments = fakeAssign
     getUserGroups: vi.fn(async () => ['Workplace Users']),
     disableUser: vi.fn(async () => true),
   };
-  const stalwart = { configured: true, createMailbox: vi.fn(async () => true) };
+  const stalwart = { configured: true, createMailbox: vi.fn(async () => true), disableMailbox: vi.fn(async () => true) };
   const config = { get: () => ({ workplaceGroup: 'Workplace Users', mailDomain: 'devandre.sbs' }) };
   const svc = new LifecycleService(repo as any, assignments as any, authentik as any, stalwart as any, config as any);
   return { svc, authentik, stalwart, assignments };
@@ -114,7 +114,7 @@ describe('LifecycleService joiner', () => {
     const assignments = fakeAssignments([
       { id: 'a1', userId: '100004', status: 'active', role: { authentikGroupRef: 'ktayl-claims-adjuster' } },
     ]);
-    const { svc, authentik } = makeService(repo, assignments);
+    const { svc, authentik, stalwart } = makeService(repo, assignments);
     await svc.handle(joiner('100004', 'Sophie Bernard'));
     await svc.handle({ event: 'leaver', effective_date: daysFromNow(-1), subject: { matricule: '100004' } });
     const id = repo.rows[0];
@@ -125,6 +125,7 @@ describe('LifecycleService joiner', () => {
     expect(authentik.removeUserFromGroup).toHaveBeenCalledWith('100004', 'Workplace Users'); // birthright
     expect(assignments.rows[0].status).toBe('revoked'); // DB source of truth
     expect(assignments.rows[0].revokedBy).toBe('system-leaver');
+    expect(stalwart.disableMailbox).toHaveBeenCalledWith('sophie.bernard@devandre.sbs'); // mailbox archived
   });
 
   it('S017 revocation is idempotent (re-processing a left identity does not re-disable)', async () => {

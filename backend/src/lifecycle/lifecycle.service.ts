@@ -161,9 +161,9 @@ export class LifecycleService {
    * Revoke ALL of a leaver's access — DEFAULT (birthright) + BUSINESS — idempotently:
    *   1. revoke every active DB assignment (source of truth) + remove its business Authentik group;
    *   2. remove the user from ALL remaining Authentik groups (incl. the Workplace Users birthright);
-   *   3. DISABLE the Authentik user (is_active=false) — the catch-all that blocks every SSO app.
-   * (Mailbox archival/disable is a deliberate follow-up — access to it is already cut by the
-   * Authentik disable, which blocks the browser mail client.)
+   *   3. DISABLE the Authentik user (is_active=false) — the catch-all that blocks every SSO app;
+   *   4. ARCHIVE the Stalwart mailbox (clear credentials) — blocks the residual direct IMAP/SMTP path
+   *      the Authentik disable can't reach, while preserving the mail for retention.
    */
   private async revokeAccess(id: Identity): Promise<void> {
     if (id.deprovisionedAt) return; // already revoked — idempotent
@@ -190,10 +190,19 @@ export class LifecycleService {
     } catch (e) {
       this.log.error(`revoke: disable user failed for ${m}: ${(e as Error).message}`);
     }
+    // archive the mailbox too — Authentik disable blocks browser/SSO mail, but the Stalwart principal
+    // still accepts direct IMAP/SMTP with the mailbox password until its credentials are cleared.
+    if (id.email && this.stalwart.configured) {
+      try {
+        await this.stalwart.disableMailbox(id.email);
+      } catch (e) {
+        this.log.error(`revoke: disable mailbox failed for ${m}: ${(e as Error).message}`);
+      }
+    }
     id.status = 'left';
     id.deprovisionedAt = new Date();
     await this.identities.save(id);
-    this.log.log(`leaver ${m} → ACCESS REVOKED (assignments=${active.length}, all groups removed, user disabled)`);
+    this.log.log(`leaver ${m} → ACCESS REVOKED (assignments=${active.length}, groups removed, user disabled, mailbox archived)`);
   }
 
   /** firstname.lastname@domain, appending 2/3/… if an identity already holds that address. */
