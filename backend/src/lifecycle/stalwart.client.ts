@@ -70,6 +70,39 @@ export class StalwartClient {
     return list.some((u: any) => String(u.emailAddress).toLowerCase() === email.toLowerCase());
   }
 
+  /** Resolve a mailbox account id by email address, or null if not found. */
+  private async accountIdByEmail(email: string): Promise<string | null> {
+    const r = await this.jmap([
+      ['x:Account/query', { accountId: 'a', filter: { '@type': 'User' }, limit: 500 }, '0'],
+      [
+        'x:Account/get',
+        { accountId: 'a', '#ids': { resultOf: '0', name: 'x:Account/query', path: '/ids' }, properties: ['id', 'emailAddress'] },
+        '1',
+      ],
+    ]);
+    const list = r.methodResponses?.find((m: any) => m[0] === 'x:Account/get')?.[1]?.list ?? [];
+    const u = list.find((x: any) => String(x.emailAddress).toLowerCase() === email.toLowerCase());
+    return u ? String(u.id) : null;
+  }
+
+  /**
+   * ARCHIVE a mailbox (S017 Leaver): clear its credentials via `x:Account/set update` → all login
+   * (IMAP/SMTP/JMAP) is refused (AUTHENTICATIONFAILED) while the account + its mail are PRESERVED for
+   * retention. Verified: credentials:{} blocks login, account/emailAddress kept, reversible. Idempotent
+   * — no-op (false) if the mailbox doesn't exist. Returns true if it disabled an existing mailbox.
+   */
+  async disableMailbox(email: string): Promise<boolean> {
+    const id = await this.accountIdByEmail(email);
+    if (!id) return false;
+    const r = await this.jmap([
+      ['x:Account/set', { accountId: 'a', update: { [id]: { credentials: {} } } }, '0'],
+    ]);
+    const resp = r.methodResponses?.[0]?.[1];
+    if (resp?.notUpdated?.[id]) throw new Error(`Stalwart disable mailbox failed: ${JSON.stringify(resp.notUpdated[id])}`);
+    this.log.log(`archived mailbox ${email} (credentials cleared — login blocked, mail preserved)`);
+    return true;
+  }
+
   /**
    * Create a mailbox for `localPart`@domain with `fullName` + `password`. Idempotent — no-op (returns
    * false) if the address already exists. Returns true if it created the account.
