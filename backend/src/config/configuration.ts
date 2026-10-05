@@ -61,6 +61,22 @@ export interface AppConfig {
      */
     exclusiveGroups: string[];
   };
+  /** S015/S016 — HR Joiner/Mover/Leaver lifecycle intake + workspace provisioning. */
+  lifecycle: {
+    /** NATS JetStream the ERPNext producer publishes signed J/M/L events to. Blank → consumer off. */
+    natsUrl: string;
+    natsStream: string; // HR_LIFECYCLE
+    natsSubject: string; // hr.lifecycle.> (we filter joiner/mover/leaver)
+    /** Shared HMAC-SHA256 key the producer signs with (Vault platform/hr-lifecycle). Blank → unsigned/dev. */
+    signingKey: string;
+    /** The all-staff birthright group a Joiner is added to → the whole workplace suite. */
+    workplaceGroup: string;
+    /** Stalwart mailbox provisioning (JMAP). Blank adminSecret → mailbox step skipped (logged). */
+    stalwartJmapUrl: string; // http://stalwart.mail.svc:8080/jmap
+    stalwartAdminUser: string; // admin
+    stalwartAdminSecret: string;
+    mailDomain: string; // devandre.sbs
+  };
 }
 
 const REQUIRED = [
@@ -130,6 +146,17 @@ export function loadConfig(): AppConfig {
         .split(',')
         .map((g) => g.trim())
         .filter(Boolean),
+    },
+    lifecycle: {
+      natsUrl: (e.HR_NATS_URL ?? '') as string,
+      natsStream: (e.HR_LIFECYCLE_STREAM ?? 'HR_LIFECYCLE') as string,
+      natsSubject: (e.HR_LIFECYCLE_SUBJECT ?? 'hr.lifecycle.>') as string,
+      signingKey: (e.HR_LIFECYCLE_SIGNING_KEY ?? '') as string,
+      workplaceGroup: (e.WORKPLACE_GROUP ?? 'Workplace Users') as string,
+      stalwartJmapUrl: (e.STALWART_JMAP_URL ?? '') as string,
+      stalwartAdminUser: (e.STALWART_ADMIN_USER ?? 'admin') as string,
+      stalwartAdminSecret: (e.STALWART_ADMIN_SECRET ?? '') as string,
+      mailDomain: (e.MAIL_DOMAIN ?? 'devandre.sbs') as string,
     },
   };
 }

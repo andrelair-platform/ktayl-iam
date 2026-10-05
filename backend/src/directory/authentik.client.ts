@@ -96,6 +96,28 @@ export class AuthentikClient {
     return (data.results ?? []).some((u) => String(u.username) === username);
   }
 
+  // ── user provisioning (S016 Joiner) ─────────────────────────────────────────
+  /**
+   * Get-or-create an Authentik user keyed by matricule (= username). Idempotent: returns the
+   * existing pk if the username already exists, else creates an active internal user with the given
+   * name + email and NO usable password (SSO-only — the Joiner has no local credential; identity is
+   * proven via the IdP/mailbox, per workplace-architecture.md). Returns the user's integer pk.
+   */
+  async ensureUser(username: string, name: string, email: string | null): Promise<number> {
+    const existing = await this.getUserPk(username);
+    if (existing !== null) return existing;
+    this.log.log(`creating Authentik user "${username}"`);
+    const created = await this.send<{ pk: number }>('POST', '/core/users/', {
+      username,
+      name,
+      email: email ?? '',
+      is_active: true,
+      type: 'internal',
+      path: 'users',
+    });
+    return Number(created.pk);
+  }
+
   // ── writes + membership (S005) ──────────────────────────────────────────────
   /** Resolve a matricule (username) to its Authentik integer pk, or null if unknown. */
   async getUserPk(username: string): Promise<number | null> {
