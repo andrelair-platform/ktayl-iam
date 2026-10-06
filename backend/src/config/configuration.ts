@@ -35,6 +35,13 @@ export interface AppConfig {
     /** Authentik API base (read-only directory), e.g. https://auth.devandre.sbs/api/v3 */
     authentikApiUrl: string;
     authentikApiToken: string;
+    /**
+     * SEPARATE, elevated Authentik token used ONLY to set a new employee's initial password at
+     * onboarding (`POST /core/users/{pk}/set_password/`). Kept distinct from `authentikApiToken`
+     * (which stays least-privilege, groups-only — threat T4) so the password-setting privilege is
+     * isolated. Blank → the Joiner skips setting the Authentik password (logs it).
+     */
+    authentikCredentialToken: string;
     /** ERPNext HR (manager source of truth). Blank creds → HR unavailable → fallback approver. */
     erpnextUrl: string;
     erpnextApiKey: string;
@@ -140,6 +147,7 @@ export function loadConfig(): AppConfig {
     directory: {
       authentikApiUrl: (e.AUTHENTIK_API_URL ?? authentikApiFromIssuer(e.AUTHENTIK_ISSUER)) as string,
       authentikApiToken: (e.AUTHENTIK_API_TOKEN ?? '') as string,
+      authentikCredentialToken: (e.AUTHENTIK_CREDENTIAL_TOKEN ?? '') as string,
       erpnextUrl: (e.ERPNEXT_URL ?? '') as string,
       erpnextApiKey: (e.ERPNEXT_API_KEY ?? '') as string,
       erpnextApiSecret: (e.ERPNEXT_API_SECRET ?? '') as string,

@@ -23,20 +23,57 @@ interface AkGroup {
 /**
  * Authentik adapter — reads the directory (S003, AC-1) AND writes group memberships (S005). Reads
  * use GET; the sync engine uses `ensureGroup` / `addUserToGroup` / `removeUserFromGroup`, all
- * idempotent (membership is checked before mutating). Auth is the `ktayl-iam-svc` token, which MUST
- * be least-privilege (groups + memberships only — threat T4); this client never touches flows,
- * providers, or user credentials.
+ * idempotent (membership is checked before mutating). The sync token (`authentikApiToken`) MUST stay
+ * least-privilege (groups + memberships only — threat T4) and never touches credentials. Setting an
+ * employee's INITIAL password at onboarding (`setPassword`, S016) is isolated on a SEPARATE elevated
+ * token (`authentikCredentialToken`) so that one privilege doesn't widen the whole client.
  */
 @Injectable()
 export class AuthentikClient {
   private readonly log = new Logger(AuthentikClient.name);
   private readonly base: string;
   private readonly token: string;
+  /** SEPARATE elevated token, used ONLY by setPassword (keeps the sync token least-privilege — T4). */
+  private readonly credentialToken: string;
 
   constructor(config: ConfigService) {
     const d = config.get<AppConfig['directory']>('directory')!;
     this.base = d.authentikApiUrl.replace(/\/$/, '');
     this.token = d.authentikApiToken;
+    this.credentialToken = d.authentikCredentialToken;
+  }
+
+  /** True if the elevated credential token is configured (enables setPassword). */
+  get canSetPassword(): boolean {
+    return Boolean(this.base && this.credentialToken);
+  }
+
+  /**
+   * Set a user's password (S016 onboarding — the shared initial default). Uses the SEPARATE elevated
+   * `credentialToken`, NOT the least-privilege sync token, so the password-setting privilege is
+   * isolated (threat T4). The Joiner calls this ONCE at provisioning (guarded by authentikProvisioned)
+   * → it never clobbers a password the employee later rotated. No-op (false) if the credential token
+   * isn't configured or the user is unknown.
+   */
+  async setPassword(username: string, password: string): Promise<boolean> {
+    if (!this.canSetPassword) return false;
+    const pk = await this.getUserPk(username);
+    if (pk === null) return false;
+    const res = await fetch(`${this.base}/core/users/${pk}/set_password/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.credentialToken}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Authentik set_password ${pk} → ${res.status} ${txt}`.trim());
+    }
+    this.log.log(`set initial password for Authentik user "${username}"`);
+    return true;
   }
 
   get configured(): boolean {
