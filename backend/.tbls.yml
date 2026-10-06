@@ -1,0 +1,12 @@
+# tbls — reverse-engineers the schema (built by running the TypeORM migrations, via `npm run db:migrate`,
+# on an ephemeral Postgres) into committed Mermaid ER docs; CI fails if backend/docs/data-model drifts
+# (.github/workflows/ci.yml schema-erd-drift). public schema; TypeORM's `migrations` bookkeeping table
+# excluded. Baseline on x86_64 / postgres:17.4 to match the CI runner (tbls embeds database_version).
+docPath: docs/data-model
+er:
+  format: mermaid
+format:
+  sort: true
+  adjust: true
+exclude:
+  - public.migrations
