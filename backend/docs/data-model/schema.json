@@ -1,0 +1,633 @@
+{
+  "name": "ktayl_iam",
+  "tables": [
+    {
+      "name": "public.application",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "authentik_app_ref",
+          "type": "varchar(160)",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "name",
+          "type": "varchar(120)",
+          "nullable": false
+        },
+        {
+          "name": "tier",
+          "type": "varchar(20)",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "application_pkey",
+          "def": "CREATE UNIQUE INDEX application_pkey ON public.application USING btree (id)",
+          "table": "public.application",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "uq_application_name",
+          "def": "CREATE UNIQUE INDEX uq_application_name ON public.application USING btree (name)",
+          "table": "public.application",
+          "columns": [
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "application_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.application",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "uq_application_name",
+          "type": "UNIQUE",
+          "def": "UNIQUE (name)",
+          "table": "public.application",
+          "referenced_table": "",
+          "columns": [
+            "name"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.assignment",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "granted_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "granted_by",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "last_sync_error",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "revoked_by",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "role_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "'active'::character varying"
+        },
+        {
+          "name": "synced_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(32)",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "assignment_pkey",
+          "def": "CREATE UNIQUE INDEX assignment_pkey ON public.assignment USING btree (id)",
+          "table": "public.assignment",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "assignment_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.assignment",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "assignment_role_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE",
+          "table": "public.assignment",
+          "referenced_table": "public.role",
+          "columns": [
+            "role_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.audit_log",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "action",
+          "type": "varchar(60)",
+          "nullable": false
+        },
+        {
+          "name": "actor",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "detail",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "'{}'::jsonb"
+        },
+        {
+          "name": "entity_id",
+          "type": "varchar(64)",
+          "nullable": false
+        },
+        {
+          "name": "entity_type",
+          "type": "varchar(40)",
+          "nullable": false
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "audit_log_pkey",
+          "def": "CREATE UNIQUE INDEX audit_log_pkey ON public.audit_log USING btree (id)",
+          "table": "public.audit_log",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "ix_audit_entity",
+          "def": "CREATE INDEX ix_audit_entity ON public.audit_log USING btree (entity_type, entity_id)",
+          "table": "public.audit_log",
+          "columns": [
+            "entity_type",
+            "entity_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "audit_log_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.audit_log",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.identity",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "authentik_provisioned",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        {
+          "name": "country",
+          "type": "varchar(80)",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "department",
+          "type": "varchar(120)",
+          "nullable": true
+        },
+        {
+          "name": "deprovisioned_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "email",
+          "type": "varchar(190)",
+          "nullable": true
+        },
+        {
+          "name": "entity",
+          "type": "varchar(120)",
+          "nullable": true
+        },
+        {
+          "name": "full_name",
+          "type": "varchar(160)",
+          "nullable": false
+        },
+        {
+          "name": "initial_mailbox_password",
+          "type": "varchar(64)",
+          "nullable": true
+        },
+        {
+          "name": "job",
+          "type": "varchar(60)",
+          "nullable": true
+        },
+        {
+          "name": "last_event_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "mailbox_provisioned",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false"
+        },
+        {
+          "name": "matricule",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "offboard_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "'active'::character varying"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "identity_pkey",
+          "def": "CREATE UNIQUE INDEX identity_pkey ON public.identity USING btree (matricule)",
+          "table": "public.identity",
+          "columns": [
+            "matricule"
+          ]
+        },
+        {
+          "name": "uq_identity_email",
+          "def": "CREATE UNIQUE INDEX uq_identity_email ON public.identity USING btree (email)",
+          "table": "public.identity",
+          "columns": [
+            "email"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "identity_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (matricule)",
+          "table": "public.identity",
+          "referenced_table": "",
+          "columns": [
+            "matricule"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.request",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "manager_approver",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "manager_decision",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "owner_approver",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "owner_decision",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "requester_id",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "role_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "request_pkey",
+          "def": "CREATE UNIQUE INDEX request_pkey ON public.request USING btree (id)",
+          "table": "public.request",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "request_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.request",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "request_role_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE",
+          "table": "public.request",
+          "referenced_table": "public.role",
+          "columns": [
+            "role_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "public.role",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "application_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "authentik_group_ref",
+          "type": "varchar(160)",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "name",
+          "type": "varchar(120)",
+          "nullable": false
+        },
+        {
+          "name": "owner",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "role_pkey",
+          "def": "CREATE UNIQUE INDEX role_pkey ON public.role USING btree (id)",
+          "table": "public.role",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "uq_role_app_name",
+          "def": "CREATE UNIQUE INDEX uq_role_app_name ON public.role USING btree (application_id, name)",
+          "table": "public.role",
+          "columns": [
+            "application_id",
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "role_application_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (application_id) REFERENCES application(id) ON DELETE CASCADE",
+          "table": "public.role",
+          "referenced_table": "public.application",
+          "columns": [
+            "application_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "role_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.role",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "uq_role_app_name",
+          "type": "UNIQUE",
+          "def": "UNIQUE (application_id, name)",
+          "table": "public.role",
+          "referenced_table": "",
+          "columns": [
+            "application_id",
+            "name"
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "table": "public.assignment",
+      "columns": [
+        "role_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.role",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.request",
+      "columns": [
+        "role_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.role",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.role",
+      "columns": [
+        "application_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.application",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (application_id) REFERENCES application(id) ON DELETE CASCADE"
+    }
+  ],
+  "driver": {
+    "name": "postgres",
+    "database_version": "PostgreSQL 17.4 (Debian 17.4-1.pgdg120+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14) 12.2.0, 64-bit",
+    "meta": {
+      "current_schema": "public",
+      "search_paths": [
+        "postgres",
+        "public"
+      ],
+      "dict": {
+        "Functions": "Stored procedures and functions"
+      }
+    }
+  }
+}
