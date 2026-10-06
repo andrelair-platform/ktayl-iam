@@ -47,7 +47,11 @@ const joiner = (matricule: string, name: string): LifecycleEvent => ({
   subject: { matricule, employee_name: name, department: 'Souscription', entity: 'Ktayl', country: 'France' },
 });
 
-function makeService(repo: ReturnType<typeof fakeRepo>, assignments = fakeAssignments()) {
+function makeService(
+  repo: ReturnType<typeof fakeRepo>,
+  assignments = fakeAssignments(),
+  cfgExtra: Record<string, unknown> = {},
+) {
   const authentik = {
     configured: true,
     ensureUser: vi.fn(async () => 42),
@@ -57,7 +61,7 @@ function makeService(repo: ReturnType<typeof fakeRepo>, assignments = fakeAssign
     disableUser: vi.fn(async () => true),
   };
   const stalwart = { configured: true, createMailbox: vi.fn(async () => true), disableMailbox: vi.fn(async () => true) };
-  const config = { get: () => ({ workplaceGroup: 'Workplace Users', mailDomain: 'devandre.sbs' }) };
+  const config = { get: () => ({ workplaceGroup: 'Workplace Users', mailDomain: 'devandre.sbs', ...cfgExtra }) };
   const svc = new LifecycleService(repo as any, assignments as any, authentik as any, stalwart as any, config as any);
   return { svc, authentik, stalwart, assignments };
 }
@@ -81,6 +85,15 @@ describe('LifecycleService joiner', () => {
     expect(authentik.ensureUser).toHaveBeenCalledWith('100004', 'Sophie Bernard', 'sophie.bernard@devandre.sbs');
     expect(authentik.addUserToGroup).toHaveBeenCalledWith('100004', 'Workplace Users');
     expect(id.initialMailboxPassword).toBeTruthy();
+  });
+
+  it('uses the configured shared DEFAULT mailbox password when set (MVP)', async () => {
+    const { svc, stalwart } = makeService(repo, undefined, { defaultMailboxPassword: 'test-default-pw' });
+    await svc.handle(joiner('100005', 'Marc Durand'));
+    // the new employee's mailbox is created with the known default (not a random per-user secret),
+    // so the mailbox + the Nextcloud Mail account can be auto-provisioned with the same value.
+    expect(stalwart.createMailbox).toHaveBeenCalledWith('marc.durand', 'Marc Durand', 'test-default-pw');
+    expect(repo.rows[0].initialMailboxPassword).toBe('test-default-pw');
   });
 
   it('is idempotent — re-processing does not re-provision or duplicate', async () => {
