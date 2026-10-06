@@ -59,6 +59,8 @@ function makeService(
     removeUserFromGroup: vi.fn(async () => undefined),
     getUserGroups: vi.fn(async () => ['Workplace Users']),
     disableUser: vi.fn(async () => true),
+    canSetPassword: true,
+    setPassword: vi.fn(async () => true),
   };
   const stalwart = { configured: true, createMailbox: vi.fn(async () => true), disableMailbox: vi.fn(async () => true) };
   const config = { get: () => ({ workplaceGroup: 'Workplace Users', mailDomain: 'devandre.sbs', ...cfgExtra }) };
@@ -87,13 +89,22 @@ describe('LifecycleService joiner', () => {
     expect(id.initialMailboxPassword).toBeTruthy();
   });
 
-  it('uses the configured shared DEFAULT mailbox password when set (MVP)', async () => {
-    const { svc, stalwart } = makeService(repo, undefined, { defaultMailboxPassword: 'test-default-pw' });
+  it('uses the configured shared DEFAULT password for BOTH the mailbox and the Authentik login (MVP)', async () => {
+    const { svc, stalwart, authentik } = makeService(repo, undefined, { defaultMailboxPassword: 'test-default-pw' });
     await svc.handle(joiner('100005', 'Marc Durand'));
-    // the new employee's mailbox is created with the known default (not a random per-user secret),
-    // so the mailbox + the Nextcloud Mail account can be auto-provisioned with the same value.
+    // one default credential: the Stalwart mailbox AND the Authentik SSO login get the same value,
+    // set ONCE at onboarding → the employee logs in everywhere with it, then rotates it later.
     expect(stalwart.createMailbox).toHaveBeenCalledWith('marc.durand', 'Marc Durand', 'test-default-pw');
+    expect(authentik.setPassword).toHaveBeenCalledWith('100005', 'test-default-pw');
     expect(repo.rows[0].initialMailboxPassword).toBe('test-default-pw');
+  });
+
+  it('does NOT set the Authentik password when no credential token is configured', async () => {
+    const { svc, authentik } = makeService(repo, undefined, { defaultMailboxPassword: 'test-default-pw' });
+    (authentik as any).canSetPassword = false; // elevated token absent → skip (no crash, logged)
+    await svc.handle(joiner('100006', 'Lea Martin'));
+    expect(authentik.setPassword).not.toHaveBeenCalled();
+    expect(repo.rows[0].authentikProvisioned).toBe(true); // provisioning still completes
   });
 
   it('is idempotent — re-processing does not re-provision or duplicate', async () => {

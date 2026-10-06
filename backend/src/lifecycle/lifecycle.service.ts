@@ -113,6 +113,13 @@ export class LifecycleService {
       try {
         await this.authentik.ensureUser(s.matricule, id.fullName, id.email);
         await this.authentik.addUserToGroup(s.matricule, this.cfg.workplaceGroup);
+        // Set the shared INITIAL password (same default as the mailbox) ONCE — this block only runs
+        // the first time (authentikProvisioned guards it), so a later re-process never clobbers a
+        // password the employee rotated. One credential: this is the SSO login (and the mail login
+        // too, once Stalwart authenticates against Authentik via LDAP). Needs the elevated token.
+        if (this.cfg.defaultMailboxPassword && this.authentik.canSetPassword) {
+          await this.authentik.setPassword(s.matricule, this.cfg.defaultMailboxPassword);
+        }
         id.authentikProvisioned = true;
         await this.identities.save(id);
       } catch (e) {
