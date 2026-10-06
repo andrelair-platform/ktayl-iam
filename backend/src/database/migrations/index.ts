@@ -5,6 +5,7 @@ import { AssignmentSync1727000300000 } from './1727000300000-AssignmentSync.js';
 import { AuditAppendOnly1727000400000 } from './1727000400000-AuditAppendOnly.js';
 import { IdentityLifecycle1727000500000 } from './1727000500000-IdentityLifecycle.js';
 import { LeaverColumns1727000600000 } from './1727000600000-LeaverColumns.js';
+import { SessionStore1727000700000 } from './1727000700000-SessionStore.js';
 
 /** Ordered migration set (run on boot via TypeORM `migrationsRun`). Append new migrations here. */
 export const MIGRATIONS = [
@@ -15,4 +16,5 @@ export const MIGRATIONS = [
   AuditAppendOnly1727000400000, // S006 — append-only audit rules
   IdentityLifecycle1727000500000, // S015/S016 — HR Joiner identity table
   LeaverColumns1727000600000, // S017 — leaver scheduled-revocation columns
+  SessionStore1727000700000, // 12-factor #6 — Postgres-backed express-session (not in-memory)
 ];

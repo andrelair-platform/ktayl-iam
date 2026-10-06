@@ -10,3 +10,4 @@ format:
   adjust: true
 exclude:
   - public.migrations
+  - public.session
