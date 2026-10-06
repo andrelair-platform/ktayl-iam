@@ -76,6 +76,13 @@ export interface AppConfig {
     stalwartAdminUser: string; // admin
     stalwartAdminSecret: string;
     mailDomain: string; // devandre.sbs
+    /**
+     * MVP: shared DEFAULT initial mailbox password given to every new employee (so the mailbox + the
+     * Nextcloud Mail account can be auto-provisioned with a known value). Employees rotate it to a
+     * personal one later (self-service, TODO). Blank → fall back to a random per-employee password.
+     * Set via env DEFAULT_MAILBOX_PASSWORD (ESO→Vault) — never hardcoded.
+     */
+    defaultMailboxPassword: string;
   };
 }
 
@@ -157,6 +164,7 @@ export function loadConfig(): AppConfig {
       stalwartAdminUser: (e.STALWART_ADMIN_USER ?? 'admin') as string,
       stalwartAdminSecret: (e.STALWART_ADMIN_SECRET ?? '') as string,
       mailDomain: (e.MAIL_DOMAIN ?? 'devandre.sbs') as string,
+      defaultMailboxPassword: (e.DEFAULT_MAILBOX_PASSWORD ?? '') as string,
     },
   };
 }

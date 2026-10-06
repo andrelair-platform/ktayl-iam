@@ -95,7 +95,10 @@ export class LifecycleService {
     if (!id.mailboxProvisioned && id.email && this.stalwart.configured) {
       try {
         const localPart = id.email.split('@')[0];
-        const pw = this.genPassword();
+        // MVP: a shared DEFAULT initial password for every employee (known value → the mailbox AND the
+        // Nextcloud Mail account can be auto-provisioned without shuttling a per-user secret around).
+        // Employees rotate it to a personal one later (self-service, TODO). Blank default → random.
+        const pw = this.cfg.defaultMailboxPassword || this.genPassword();
         const created = await this.stalwart.createMailbox(localPart, id.fullName, pw);
         id.mailboxProvisioned = true;
         if (created) id.initialMailboxPassword = pw; // deliver-then-rotate (MVP)
