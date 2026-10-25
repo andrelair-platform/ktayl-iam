@@ -3,8 +3,12 @@ on:
   push:
     branches: [main]
     paths: ['backend/**', 'frontend/**', '.github/workflows/ci.yml']
+  # PR trigger is intentionally NOT path-filtered: a workflow skipped by a path filter leaves its
+  # required checks "Expected" forever and deadlocks the PR (GitHub docs). Instead the workflow
+  # always runs on PRs to main, a job-level `changes` filter skips the heavy jobs on a docs-only
+  # PR, and the always-run `CI Success` aggregate is the single required status check.
   pull_request:
-    paths: ['backend/**', 'frontend/**', '.github/workflows/ci.yml']
+    branches: [main]
 
 permissions:
   contents: read
@@ -14,8 +18,28 @@ env:
   GHCR_ORG: ghcr.io/andrelair-platform          # prod images (public, durable, off local disk)
 
 jobs:
-  # ── L0/L1 gate (every push/PR) ──────────────────────────────────────────────
+  # Detect whether real code (not just docs/bmad) changed, so the heavy jobs can be skipped on a
+  # docs-only PR while the workflow still runs and reports (see the `on:` note + CI Success below).
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'backend/**'
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+
+  # ── L0/L1 gate (runs when code changed) ─────────────────────────────────────
   backend:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,6 +54,8 @@ jobs:
       - run: npm test
 
   frontend:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,6 +76,8 @@ jobs:
   # PINNED: postgres:17.4 (tbls embeds database_version) + x86_64 baseline + tbls digest + explicit flags.
   # public schema; TypeORM's public.migrations table excluded via backend/.tbls.yml.
   schema-erd-drift:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -205,3 +233,36 @@ jobs:
           syft ${{ steps.meta.outputs.ghcr_ref }} -o cyclonedx-json=sbom-${{ matrix.app }}.json
           cosign attest --yes --predicate sbom-${{ matrix.app }}.json --type cyclonedx \
             ${GHCR_ORG}/ktayl-iam-${{ matrix.app }}@${{ steps.build.outputs.digest }}
+
+  # ── Single required status check for the `main-protection` ruleset ──────────
+  # `if: always()` → ALWAYS runs on every PR to main, so it ALWAYS reports a conclusion (no
+  # path/skip "Expected"-forever deadlock). Fails if change-detection failed or any heavy job
+  # genuinely failed; a SKIPPED heavy job (docs-only PR) is an accepted pass. Mirrors retrieva.
+  ci-success:
+    name: CI Success
+    needs: [changes, backend, frontend, schema-erd-drift]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all required jobs passed
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          ERD_RESULT: ${{ needs.schema-erd-drift.result }}
+        run: |
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "Change detection failed (result=$CHANGES_RESULT)"; exit 1
+          fi
+          fail=0
+          for name in BACKEND FRONTEND ERD; do
+            var="${name}_RESULT"; r="${!var}"
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then
+              echo "$name job did not pass (result=$r)"; fail=1
+            fi
+          done
+          if [[ $fail -eq 0 ]]; then
+            echo "All CI checks passed (heavy jobs skipped = no code change)."
+          else
+            exit 1
+          fi
