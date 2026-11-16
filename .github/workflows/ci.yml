@@ -178,3 +178,31 @@ jobs:
           syft ${{ steps.meta.outputs.ghcr_ref }} -o cyclonedx-json=sbom-${{ matrix.app }}.json
           cosign attest --yes --predicate sbom-${{ matrix.app }}.json --type cyclonedx \
             ${GHCR_ORG}/ktayl-iam-${{ matrix.app }}@${{ steps.build.outputs.digest }}
+
+  # Single required status check (ruleset main-protection). Aggregates the PR gate jobs so the
+  # ruleset tracks ONE name regardless of the matrix/build fan-out. build-and-push runs on push
+  # only (not PR) → not required here. A genuinely failed gate job fails this; nothing is skipped.
+  ci-success:
+    name: CI Success
+    needs: [backend, frontend, schema-erd-drift]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all required jobs passed
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          ERD_RESULT: ${{ needs.schema-erd-drift.result }}
+        run: |
+          fail=0
+          for name in BACKEND FRONTEND ERD; do
+            var="${name}_RESULT"; r="${!var}"
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then
+              echo "$name job did not pass (result=$r)"; fail=1
+            fi
+          done
+          if [[ $fail -eq 0 ]]; then
+            echo "All CI gate jobs passed."
+          else
+            exit 1
+          fi
