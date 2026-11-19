@@ -89,6 +89,17 @@ export class ExternalCollaboratorService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
+  /**
+   * Mark a collaborator provisioned (S027): flip to `active` and record its Authentik username.
+   * Persistence only — the provisioning service audits the richer `external_collaborator.provisioned` event.
+   */
+  async markProvisioned(id: string, authentikUsername: string): Promise<ExternalCollaborator> {
+    const c = await this.getById(id);
+    c.status = 'active';
+    c.authentikUsername = authentikUsername;
+    return this.repo.save(c);
+  }
+
   /** Flip lifecycle status (driven by S026–S029) + audit the transition. */
   async updateStatus(
     id: string,

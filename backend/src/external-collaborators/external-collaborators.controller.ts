@@ -7,6 +7,7 @@ import { AdminOnly } from '../auth/admin-only.decorator.js';
 import { DecideDto } from '../workflow/dto/decide.dto.js';
 import { ExternalCollaboratorWorkflowService } from './external-collaborator-workflow.service.js';
 import { ExternalCollaboratorService } from './external-collaborator.service.js';
+import { ExternalCollaboratorProvisioningService } from './external-collaborator-provisioning.service.js';
 import { CreateExternalCollaboratorRequestDto } from './dto/create-external-collaborator-request.dto.js';
 
 function actorOf(req: ExpressRequest): string {
@@ -27,6 +28,7 @@ export class ExternalCollaboratorsController {
   constructor(
     private readonly workflow: ExternalCollaboratorWorkflowService,
     private readonly collaborators: ExternalCollaboratorService,
+    private readonly provisioning: ExternalCollaboratorProvisioningService,
     config: ConfigService,
   ) {
     this.allowOverride = config.get<AppConfig['workflow']>('workflow')!.allowApproverOverride;
@@ -70,6 +72,12 @@ export class ExternalCollaboratorsController {
     // four-eyes; the server still rejects self-approval + any non-assigned approver. Actor is audited.
     const approver = this.allowOverride && dto.approver ? dto.approver : actor;
     return this.workflow.decide(id, approver, dto.decision, dto.comment, actor);
+  }
+
+  /** Re-run provisioning for an approved collaborator whose auto-provision failed (S027). Idempotent, audited. */
+  @Post(':id/provision')
+  provision(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {
+    return this.provisioning.provision(id, actorOf(req));
   }
 
   @Get()
