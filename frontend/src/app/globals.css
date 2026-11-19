@@ -1,30 +1,125 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * ktayl IAM design tokens — shadcn/ui structure, ktayl brand.
+ * Primary = navy #00375A (structure, focus, primary buttons); brand = orange #E8690B (hero CTAs,
+ * active nav, accents). Neutrals = a slate scale. Semantic success/warning for status pills.
+ */
+:root {
+  --radius: 0.625rem;
+
+  --background: #f6f8fa;
+  --foreground: #1b2733;
+  --card: #ffffff;
+  --card-foreground: #1b2733;
+  --popover: #ffffff;
+  --popover-foreground: #1b2733;
+
+  --primary: #00375a; /* navy */
+  --primary-foreground: #ffffff;
+  --brand: #e8690b; /* orange CTA */
+  --brand-foreground: #ffffff;
+
+  --secondary: #eef2f5;
+  --secondary-foreground: #00375a;
+  --muted: #eef2f5;
+  --muted-foreground: #5b6b78;
+  --accent: #eaf1f6;
+  --accent-foreground: #00375a;
+
+  --success: #0a8a5f;
+  --success-foreground: #ffffff;
+  --warning: #b5560a;
+  --warning-foreground: #ffffff;
+  --destructive: #c0352b;
+  --destructive-foreground: #ffffff;
+
+  --border: #e3e9ee;
+  --input: #cdd7de;
+  --ring: #00375a;
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
+.dark {
+  --background: #0d141b;
+  --foreground: #e7edf2;
+  --card: #131c25;
+  --card-foreground: #e7edf2;
+  --popover: #131c25;
+  --popover-foreground: #e7edf2;
+  --primary: #4aa3d6;
+  --primary-foreground: #06121c;
+  --brand: #f5832f;
+  --brand-foreground: #1a0d02;
+  --secondary: #1c2833;
+  --secondary-foreground: #e7edf2;
+  --muted: #1c2833;
+  --muted-foreground: #92a2af;
+  --accent: #1c2b38;
+  --accent-foreground: #e7edf2;
+  --success: #2bb27e;
+  --success-foreground: #06121c;
+  --warning: #e0913d;
+  --warning-foreground: #1a0d02;
+  --destructive: #e26258;
+  --destructive-foreground: #1a0d02;
+  --border: #243442;
+  --input: #2b3d4c;
+  --ring: #4aa3d6;
 }
 
-body {
-  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  background: #f6f8fa;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-a {
-  color: inherit;
-}
-
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: #eef2f5;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 0.9em;
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    margin: 0;
+  }
+  code {
+    font-family: var(--font-mono);
+    background: var(--muted);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
 }
