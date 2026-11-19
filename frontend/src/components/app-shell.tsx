@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  ScrollText,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +50,7 @@ const ADMIN: NavItem[] = [
   { href: "/admin/requests", label: "Access requests", icon: Inbox, cap: "requests:reassign" },
   { href: "/admin", label: "Catalog", icon: Boxes, cap: "catalog:manage" },
   { href: "/admin/service-accounts", label: "Service accounts", icon: Bot, cap: "service_accounts:manage" },
+  { href: "/admin/audit", label: "Audit log", icon: ScrollText, cap: "audit:read:all" },
 ];
 
 function envLabel(): string {
@@ -161,7 +163,7 @@ export function AppShell({
             Admin · IT
           </p>
           {adminItems.map((i) => (
-            <NavLink key={i.href} item={i} active={pathname.startsWith(i.href)} />
+            <NavLink key={i.href} item={i} active={pathname === i.href} />
           ))}
         </div>
       )}
