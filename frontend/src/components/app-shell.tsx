@@ -6,9 +6,12 @@ import { usePathname } from "next/navigation";
 import {
   Bot,
   Boxes,
+  CheckSquare,
+  FilePlus2,
   Inbox,
   KeyRound,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   ShieldCheck,
   type LucideIcon,
@@ -36,7 +39,12 @@ interface NavItem {
 }
 
 // Target IA (frontend-redesign.md §4); paths keep the current routes during migration.
-const MY_ACCESS: NavItem[] = [{ href: "/me", label: "My access", icon: LayoutDashboard }];
+const MY_ACCESS: NavItem[] = [
+  { href: "/me", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/me/request", label: "Request access", icon: FilePlus2 },
+  { href: "/me/requests", label: "My requests", icon: ListChecks },
+  { href: "/me/approvals", label: "My approvals", icon: CheckSquare },
+];
 const ADMIN: NavItem[] = [
   { href: "/admin/requests", label: "Access requests", icon: Inbox, cap: "requests:reassign" },
   { href: "/admin", label: "Catalog", icon: Boxes, cap: "catalog:manage" },
