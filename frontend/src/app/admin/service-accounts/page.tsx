@@ -84,7 +84,20 @@ export default function ServiceAccountsConsole() {
     }
   }, []);
 
-  useEffect(() => { reload(); }, [reload]);
+  // Initial load — inline promise chain (not a direct reload() call) so setState lands in an async
+  // callback, per react-hooks/set-state-in-effect. `reload` (above) is for the action handlers.
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      api("/service-accounts"),
+      api("/service-accounts/requests"),
+      api("/service-accounts/due?days=90"),
+    ])
+      .then(([a, r, d]) => { if (active) { setAccounts(a); setRequests(r); setDue(d); setError(null); } })
+      .catch((e: Error) => active && (e.message === "UNAUTHORISED" ? setUnauth(true) : setError(e.message)))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, []);
 
   const act = async (fn: () => Promise<unknown>) => {
     try { await fn(); await reload(); setError(null); }
