@@ -1,254 +1,275 @@
 "use client";
 
-/* ktayl Access Governance — admin catalog (S002). Lists governed applications + their roles
-   and registers new ones via the same-origin API (/api/applications). Admin session required
-   (the backend's global guard); a 401 sends the operator back through SSO. */
+/* Application & role catalog (admin) — the source of truth for what apps exist, their roles, and who
+   owns each role (approver #2). Register apps + roles here; access requests target these roles. */
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { Boxes, Plus } from "lucide-react";
+import { toast } from "sonner";
+import { api, ApiError } from "@/lib/api";
+import { useAccessData } from "@/hooks/use-access-data";
+import { useDirectory } from "@/hooks/use-directory";
+import { AppShell } from "@/components/app-shell";
+import { PersonLabel } from "@/components/person-label";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
-const NAVY = "#00375A";
-const ORANGE = "#E8690B";
 const TIERS = ["public", "internal", "restricted"] as const;
 
-type Role = {
+function tierBadge(t: string) {
+  if (t === "restricted") return <Badge variant="destructive">{t}</Badge>;
+  if (t === "internal") return <Badge variant="warning">{t}</Badge>;
+  return <Badge variant="secondary">{t}</Badge>;
+}
+
+interface Role {
   id: string;
   name: string;
-  owner: string;
-  authentikGroupRef: string;
-  description: string | null;
-};
-type Application = {
+  owner?: string;
+  authentikGroupRef?: string;
+  description?: string | null;
+}
+interface Application {
   id: string;
   name: string;
   tier: string;
-  authentikAppRef: string;
-  description: string | null;
+  authentikAppRef?: string;
+  description?: string | null;
   roles: Role[];
-};
-
-async function api(path: string, init?: RequestInit) {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
-  if (res.status === 401) throw new Error("UNAUTHORISED");
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(Array.isArray(body.message) ? body.message.join(", ") : body.message ?? `HTTP ${res.status}`);
-  }
-  return res.status === 204 ? null : res.json();
 }
 
-export default function AdminCatalog() {
-  const [apps, setApps] = useState<Application[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [unauth, setUnauth] = useState(false);
-  const [denied, setDenied] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  // S009/S010: the admin console is admin-only — a non-admin is sent to their hub, not shown admin UI.
-  useEffect(() => {
-    let active = true;
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((m) => { if (active && m && !m.isAdmin) setDenied(true); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
-
-  const reload = useCallback(async () => {
-    try {
-      setApps(await api("/applications"));
-      setError(null);
-    } catch (e) {
-      if ((e as Error).message === "UNAUTHORISED") setUnauth(true);
-      else setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    api("/applications")
-      .then((data) => active && (setApps(data), setError(null)))
-      .catch((e: Error) => active && (e.message === "UNAUTHORISED" ? setUnauth(true) : setError(e.message)))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  if (denied) {
-    return (
-      <Shell>
-        <Card>
-          <p style={{ margin: 0, color: "#3b4a55" }}>The admin console requires the Access Governance admin role.</p>
-          <a href="/me" style={btn}>Go to your console →</a>
-        </Card>
-      </Shell>
-    );
-  }
-
-  if (unauth) {
-    return (
-      <Shell>
-        <Card>
-          <p style={{ margin: 0, color: "#3b4a55" }}>Your session has expired.</p>
-          <a href="/api/auth/login" style={btn}>Sign in with Authentik →</a>
-        </Card>
-      </Shell>
-    );
-  }
+export default function CatalogPage() {
+  const { apps, loading, error, reload } = useAccessData() as unknown as {
+    apps: Application[];
+    loading: boolean;
+    error: string | null;
+    reload: () => Promise<void>;
+  };
+  const dir = useDirectory();
+  const nameOf = (m?: string | null) => (m ? dir.get(m)?.name : undefined);
 
   return (
-    <Shell>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 30, fontWeight: 800, color: NAVY, margin: "0 0 4px" }}>Application &amp; role catalog</h1>
-        <span style={{ display: "flex", gap: 14 }}>
-          <a href="/admin/service-accounts" style={{ color: ORANGE, fontWeight: 600, fontSize: 14 }}>Service accounts →</a>
-          <a href="/admin/requests" style={{ color: ORANGE, fontWeight: 600, fontSize: 14 }}>Access workflow →</a>
-        </span>
-      </div>
-      <p style={{ color: "#3b4a55", marginTop: 0 }}>
-        The source of truth for what applications exist, what roles they have, and who owns each role.
+    <AppShell title="Application & role catalog" actions={<NewApplication onDone={reload} />}>
+      <p className="mb-5 max-w-2xl text-sm text-muted-foreground">
+        The source of truth for what applications exist, what roles they have, and who owns each role (the
+        role owner is approver #2 in four-eyes).
       </p>
 
-      {error && <div style={{ ...card, borderColor: "#d33", color: "#a11" }}>Error: {error}</div>}
-
-      <NewApplicationForm onCreated={reload} onError={setError} />
+      {error && (
+        <Card className="mb-4 border-destructive/40 p-4 text-sm text-destructive">Error: {error}</Card>
+      )}
 
       {loading ? (
-        <p style={{ color: "#3b4a55" }}>Loading…</p>
+        <Skeleton className="h-48 w-full" />
       ) : apps.length === 0 ? (
-        <p style={{ color: "#3b4a55" }}>No applications yet — register the first one above.</p>
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+          <Boxes className="size-7 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No applications registered yet.</p>
+        </div>
       ) : (
-        apps.map((app) => <AppCard key={app.id} app={app} onChange={reload} onError={setError} />)
+        <div className="space-y-4">
+          {apps.map((app) => (
+            <Card key={app.id} className="p-5">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <span className="font-semibold text-primary">{app.name}</span>
+                  {tierBadge(app.tier)}
+                </span>
+                <NewRole appId={app.id} onDone={reload} />
+              </div>
+              {app.description && <p className="mb-3 text-sm text-muted-foreground">{app.description}</p>}
+              {app.roles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No roles yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Owner</TableHead>
+                      <TableHead>Authentik group</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {app.roles.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-medium">{r.name}</TableCell>
+                        <TableCell>
+                          <PersonLabel matricule={r.owner ?? null} name={nameOf(r.owner)} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {r.authentikGroupRef}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Card>
+          ))}
+        </div>
       )}
-    </Shell>
+    </AppShell>
   );
 }
 
-function AppCard({ app, onChange, onError }: { app: Application; onChange: () => void; onError: (m: string) => void }) {
-  return (
-    <div style={card}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-        <strong style={{ fontSize: 18, color: NAVY }}>{app.name}</strong>
-        <span style={tierPill(app.tier)}>{app.tier}</span>
-        <code style={{ color: "#5a6b76", fontSize: 13 }}>{app.authentikAppRef}</code>
-      </div>
-      {app.description && <p style={{ color: "#3b4a55", margin: "6px 0 0" }}>{app.description}</p>}
-
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12, fontSize: 14 }}>
-        <thead>
-          <tr style={{ textAlign: "left", color: "#5a6b76" }}>
-            <th style={th}>Role</th>
-            <th style={th}>Owner</th>
-            <th style={th}>Authentik group</th>
-          </tr>
-        </thead>
-        <tbody>
-          {app.roles?.length ? (
-            app.roles.map((r) => (
-              <tr key={r.id} style={{ borderTop: "1px solid #eef2f5" }}>
-                <td style={td}>{r.name}</td>
-                <td style={td}>{r.owner}</td>
-                <td style={td}><code>{r.authentikGroupRef}</code></td>
-              </tr>
-            ))
-          ) : (
-            <tr><td style={{ ...td, color: "#8a97a0" }} colSpan={3}>No roles yet.</td></tr>
-          )}
-        </tbody>
-      </table>
-
-      <NewRoleForm appId={app.id} onCreated={onChange} onError={onError} />
-    </div>
-  );
-}
-
-function NewApplicationForm({ onCreated, onError }: { onCreated: () => void; onError: (m: string) => void }) {
+function NewApplication({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
   const [f, setF] = useState({ name: "", tier: "internal", authentikAppRef: "", description: "" });
   const [busy, setBusy] = useState(false);
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const submit = async () => {
     setBusy(true);
     try {
-      await api("/applications", { method: "POST", body: JSON.stringify({ ...f, description: f.description || undefined }) });
+      await api("/applications", {
+        method: "POST",
+        body: JSON.stringify({ ...f, description: f.description || undefined }),
+      });
+      toast.success(`Application ${f.name} registered`);
+      setOpen(false);
       setF({ name: "", tier: "internal", authentikAppRef: "", description: "" });
-      onCreated();
+      onDone();
     } catch (e) {
-      onError((e as Error).message);
+      toast.error(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   };
   return (
-    <form onSubmit={submit} style={{ ...card, background: "#f6f9fb" }}>
-      <strong style={{ color: NAVY }}>Register an application</strong>
-      <div style={row}>
-        <input required placeholder="Name (e.g. Grafana)" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} style={input} />
-        <select value={f.tier} onChange={(e) => setF({ ...f, tier: e.target.value })} style={input}>
-          {TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <input required placeholder="Authentik app slug (e.g. grafana)" value={f.authentikAppRef} onChange={(e) => setF({ ...f, authentikAppRef: e.target.value })} style={input} />
-      </div>
-      <input placeholder="Description (optional)" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} style={{ ...input, width: "100%" }} />
-      <button type="submit" disabled={busy} style={btn}>{busy ? "Saving…" : "Add application"}</button>
-    </form>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="brand" size="sm">
+          <Plus className="size-4" /> New application
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Register an application</DialogTitle>
+          <DialogDescription>The governance record; `authentikAppRef` is the Authentik slug.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <Field id="app-name" label="Name" value={f.name} onChange={(v) => set("name", v)} placeholder="Grafana" />
+          <div className="grid gap-1.5">
+            <Label>Tier</Label>
+            <Select value={f.tier} onValueChange={(v) => set("tier", v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIERS.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Field id="app-ref" label="Authentik app ref" value={f.authentikAppRef} onChange={(v) => set("authentikAppRef", v)} placeholder="grafana" />
+          <Field id="app-desc" label="Description (optional)" value={f.description} onChange={(v) => set("description", v)} placeholder="" />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="brand" disabled={busy || !f.name || !f.authentikAppRef} onClick={submit}>
+            {busy ? "Saving…" : "Register"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function NewRoleForm({ appId, onCreated, onError }: { appId: string; onCreated: () => void; onError: (m: string) => void }) {
+function NewRole({ appId, onDone }: { appId: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
   const [f, setF] = useState({ name: "", owner: "", authentikGroupRef: "", description: "" });
   const [busy, setBusy] = useState(false);
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
+  const submit = async () => {
     setBusy(true);
     try {
-      await api(`/applications/${appId}/roles`, { method: "POST", body: JSON.stringify({ ...f, description: f.description || undefined }) });
+      await api(`/applications/${appId}/roles`, {
+        method: "POST",
+        body: JSON.stringify({ ...f, description: f.description || undefined }),
+      });
+      toast.success(`Role ${f.name} added`);
+      setOpen(false);
       setF({ name: "", owner: "", authentikGroupRef: "", description: "" });
-      onCreated();
+      onDone();
     } catch (e) {
-      onError((e as Error).message);
+      toast.error(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   };
   return (
-    <form onSubmit={submit} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
-      <input required placeholder="Role name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} style={{ ...input, flex: "1 1 130px" }} />
-      <input required placeholder="Owner (matricule)" value={f.owner} onChange={(e) => setF({ ...f, owner: e.target.value })} style={{ ...input, flex: "1 1 130px" }} />
-      <input required placeholder="Authentik group" value={f.authentikGroupRef} onChange={(e) => setF({ ...f, authentikGroupRef: e.target.value })} style={{ ...input, flex: "1 1 160px" }} />
-      <button type="submit" disabled={busy} style={{ ...btn, background: NAVY, marginTop: 0, padding: "8px 14px" }}>{busy ? "…" : "+ role"}</button>
-    </form>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Plus className="size-3.5" /> Role
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a role</DialogTitle>
+          <DialogDescription>A role must have an owner (approver #2 in four-eyes).</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <Field id="role-name" label="Name" value={f.name} onChange={(v) => set("name", v)} placeholder="Viewer" />
+          <Field id="role-owner" label="Owner matricule" value={f.owner} onChange={(v) => set("owner", v)} placeholder="100002" />
+          <Field id="role-group" label="Authentik group ref" value={f.authentikGroupRef} onChange={(v) => set("authentikGroupRef", v)} placeholder="ktayl-grafana-viewer" />
+          <Field id="role-desc" label="Description (optional)" value={f.description} onChange={(v) => set("description", v)} placeholder="" />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="brand" disabled={busy || !f.name || !f.owner || !f.authentikGroupRef} onClick={submit}>
+            {busy ? "Saving…" : "Add role"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-/* ---------- presentational helpers ---------- */
-function Shell({ children }: { children: React.ReactNode }) {
+function Field({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
   return (
-    <main style={{ minHeight: "100dvh", background: "#f6f8fa", padding: "40px 20px" }}>
-      <div style={{ maxWidth: 880, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/ktayl-logo.svg" alt="ktayl-solution" width={180} height={40} />
-        {children}
-      </div>
-    </main>
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input id={id} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    </div>
   );
-}
-function Card({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...card, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>{children}</div>;
-}
-
-const card: React.CSSProperties = { background: "#fff", border: "1px solid #e3e9ee", borderRadius: 12, padding: 18 };
-const row: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" };
-const input: React.CSSProperties = { padding: "8px 10px", border: "1px solid #cdd7de", borderRadius: 8, fontSize: 14, flex: "1 1 160px" };
-const btn: React.CSSProperties = { marginTop: 10, background: ORANGE, color: "#fff", border: 0, borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-block" };
-const th: React.CSSProperties = { padding: "4px 6px", fontWeight: 600 };
-const td: React.CSSProperties = { padding: "6px 6px", color: "#2b3942" };
-function tierPill(tier: string): React.CSSProperties {
-  const c = tier === "restricted" ? "#a11" : tier === "internal" ? "#0a6" : "#468";
-  return { fontSize: 12, fontWeight: 700, color: c, border: `1px solid ${c}`, borderRadius: 999, padding: "1px 8px", textTransform: "uppercase" };
 }
