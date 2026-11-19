@@ -3,7 +3,9 @@ ARG CACHEBUST=local   # unused here; declared so the shared CI build-arg doesn't
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# --legacy-peer-deps to match CI: vitest's peerOptional @types/node ">=22" vs the project's ^20 trips
+# npm's strict peer resolver (the test tooling is dev-only; it must not block the production image build).
+RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
