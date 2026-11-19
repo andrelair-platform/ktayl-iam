@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -100,6 +101,27 @@ export class ServiceAccountsController {
       throw new ForbiddenException('Only an admin may (re)provision a service account.');
     }
     return this.provisioning.provision(id, actorOf(req));
+  }
+
+  /** Active accounts due for recertification (never recertified, or older than `?days=` — default 90). */
+  @Get('due')
+  due(@Query('days') days?: string) {
+    const d = Number(days ?? 90);
+    return this.accounts.listDueForRecertification(Number.isFinite(d) && d > 0 ? d : 90);
+  }
+
+  /**
+   * Owner/admin re-attestation that an active account is still needed (S024). Only an admin or the
+   * named owner may recertify; stamps `last_recertified_at` and audits it.
+   */
+  @Post(':id/recertify')
+  async recertify(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {
+    const actor = actorOf(req);
+    const sa = await this.accounts.getById(id);
+    if (!isAdminOf(req) && sa.ownerMatricule !== actor) {
+      throw new ForbiddenException('Only an admin or the account owner may recertify it.');
+    }
+    return this.accounts.recertify(id, actor);
   }
 
   @Get()
