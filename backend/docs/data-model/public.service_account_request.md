@@ -1,0 +1,72 @@
+# public.service_account_request
+
+## Columns
+
+| Name               | Type                     | Default                      | Nullable | Children | Parents                                             | Comment |
+| ------------------ | ------------------------ | ---------------------------- | -------- | -------- | --------------------------------------------------- | ------- |
+| created_at         | timestamp with time zone | now()                        | false    |          |                                                     |         |
+| id                 | uuid                     | gen_random_uuid()            | false    |          |                                                     |         |
+| justification      | text                     |                              | false    |          |                                                     |         |
+| owner_approver     | varchar(32)              |                              | true     |          |                                                     |         |
+| owner_decision     | jsonb                    |                              | true     |          |                                                     |         |
+| requester_id       | varchar(32)              |                              | false    |          |                                                     |         |
+| security_approver  | varchar(32)              |                              | true     |          |                                                     |         |
+| security_decision  | jsonb                    |                              | true     |          |                                                     |         |
+| service_account_id | uuid                     |                              | false    |          | [public.service_account](public.service_account.md) |         |
+| status             | varchar(20)              | 'pending'::character varying | false    |          |                                                     |         |
+| updated_at         | timestamp with time zone | now()                        | false    |          |                                                     |         |
+
+## Constraints
+
+| Name                                            | Type        | Definition                                                                                                                                                                 |
+| ----------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| service_account_request_pkey                    | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                           |
+| service_account_request_service_account_id_fkey | FOREIGN KEY | FOREIGN KEY (service_account_id) REFERENCES service_account(id) ON DELETE CASCADE                                                                                          |
+| service_account_request_status_check            | CHECK       | CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'denied'::character varying, 'cancelled'::character varying])::text[]))) |
+
+## Indexes
+
+| Name                           | Definition                                                                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| idx_sa_request_service_account | CREATE INDEX idx_sa_request_service_account ON public.service_account_request USING btree (service_account_id) |
+| service_account_request_pkey   | CREATE UNIQUE INDEX service_account_request_pkey ON public.service_account_request USING btree (id)            |
+
+## Relations
+
+```mermaid
+erDiagram
+
+"public.service_account_request" }o--|| "public.service_account" : "FOREIGN KEY (service_account_id) REFERENCES service_account(id) ON DELETE CASCADE"
+
+"public.service_account_request" {
+  timestamp_with_time_zone created_at
+  uuid id
+  text justification
+  varchar_32_ owner_approver
+  jsonb owner_decision
+  varchar_32_ requester_id
+  varchar_32_ security_approver
+  jsonb security_decision
+  uuid service_account_id FK
+  varchar_20_ status
+  timestamp_with_time_zone updated_at
+}
+"public.service_account" {
+  varchar_160_ authentik_username
+  timestamp_with_time_zone created_at
+  varchar_32_ created_by
+  varchar_200_ display_name
+  text__ group_refs
+  uuid id
+  timestamp_with_time_zone last_recertified_at
+  varchar_120_ name
+  varchar_32_ owner_matricule
+  varchar_16_ status
+  varchar_16_ type
+  varchar_200_ vault_secret_ref
+}
+```
+
+---
+
+> Generated by [tbls](https://github.com/k1LoW/tbls)

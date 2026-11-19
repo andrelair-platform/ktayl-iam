@@ -1,0 +1,176 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import type { AppConfig } from '../config/configuration.js';
+import { AuditService } from '../catalog/audit.service.js';
+import { resolveApprovers } from '../workflow/approver-resolution.js';
+import {
+  ServiceAccountRequest,
+  type SaApprovalDecision,
+} from './entities/service-account-request.entity.js';
+import {
+  ServiceAccountService,
+  type CreateServiceAccountInput,
+} from './service-account.service.js';
+
+export type SaLeg = 'security' | 'owner';
+
+export interface FileServiceAccountRequestInput extends Omit<CreateServiceAccountInput, 'createdBy'> {
+  justification: string;
+}
+
+/**
+ * The governed service-account request + dual-approval (IGA-06 / S022). Reuses the human workflow's
+ * pure four-eyes resolver (`resolveApprovers`) — mapping the "manager" leg to a **Security/Platform
+ * approver** (a service account has no HR manager) and the "owner" leg to the service-account owner.
+ * A mandatory justification is required. Nothing reaches Authentik here — both approvals leave the
+ * request `approved` (the owned service account stays `requested`) and S023 provisions it.
+ */
+@Injectable()
+export class ServiceAccountWorkflowService {
+  private readonly log = new Logger(ServiceAccountWorkflowService.name);
+  private readonly securityApprover: string;
+  private readonly backupApprover: string;
+
+  constructor(
+    @InjectRepository(ServiceAccountRequest)
+    private readonly requests: Repository<ServiceAccountRequest>,
+    private readonly accounts: ServiceAccountService,
+    private readonly audit: AuditService,
+    config: ConfigService,
+  ) {
+    const dir = config.get<AppConfig['directory']>('directory')!;
+    this.securityApprover = dir.securityApprover;
+    this.backupApprover = dir.fallbackApprover;
+  }
+
+  /** File a service-account request: create the account (`requested`) + resolve the four-eyes legs. */
+  async fileRequest(input: FileServiceAccountRequestInput, actor: string): Promise<ServiceAccountRequest> {
+    if (!input.justification || !input.justification.trim()) {
+      throw new UnprocessableEntityException('a service-account request requires a justification');
+    }
+
+    const account = await this.accounts.create({ ...input, createdBy: actor });
+
+    // Reuse the pure four-eyes resolver: "manager" leg → Security approver, "owner" leg → the owner.
+    const resolution = resolveApprovers({
+      requesterId: actor,
+      managerFromHr: this.securityApprover,
+      roleOwner: input.ownerMatricule,
+      backup: this.backupApprover,
+    });
+
+    const req = await this.requests.save(
+      this.requests.create({
+        requesterId: actor,
+        serviceAccountId: account.id,
+        justification: input.justification.trim(),
+        securityApprover: resolution.managerApprover,
+        ownerApprover: resolution.ownerApprover,
+        status: 'pending',
+        securityDecision: null,
+        ownerDecision: null,
+      }),
+    );
+
+    await this.audit.record(actor, 'service_account.requested', 'service_account_request', req.id, {
+      serviceAccount: account.name,
+      owner: input.ownerMatricule,
+      groups: input.groupRefs,
+      securityApprover: resolution.managerApprover,
+      ownerApprover: resolution.ownerApprover,
+      justification: req.justification,
+      reassignments: resolution.notes,
+      needsManualReview: resolution.needsManualReview,
+    });
+    return req;
+  }
+
+  /** Record an approver's decision on their leg. Either denial rejects; both-approved → `approved`. */
+  async decide(
+    requestId: string,
+    approver: string,
+    decision: 'approved' | 'denied',
+    comment: string | undefined,
+    actor: string,
+  ): Promise<ServiceAccountRequest> {
+    const req = await this.requests.findOne({ where: { id: requestId } });
+    if (!req) {
+      throw new NotFoundException(`service-account request ${requestId} not found`);
+    }
+    if (req.status !== 'pending') {
+      throw new ConflictException(`request is already ${req.status} and cannot be decided again`);
+    }
+    if (approver === req.requesterId) {
+      throw new ForbiddenException('no self-approval: the requester cannot approve their own request');
+    }
+
+    const legs: SaLeg[] = [];
+    if (approver === req.securityApprover && !req.securityDecision) legs.push('security');
+    if (approver === req.ownerApprover && !req.ownerDecision) legs.push('owner');
+    if (legs.length === 0) {
+      throw new ForbiddenException(
+        'you are not an assigned approver for this request, or your leg is already decided',
+      );
+    }
+
+    const entry: SaApprovalDecision = {
+      approver,
+      decision,
+      at: new Date().toISOString(),
+      ...(comment ? { comment } : {}),
+    };
+    for (const leg of legs) {
+      if (leg === 'security') req.securityDecision = entry;
+      else req.ownerDecision = entry;
+      await this.audit.record(actor, `service_account.${leg}_${decision}`, 'service_account_request', req.id, {
+        approver,
+        leg,
+        decision,
+        comment: comment ?? null,
+      });
+    }
+
+    if (decision === 'denied') {
+      req.status = 'denied';
+      await this.requests.save(req);
+      await this.audit.record(actor, 'service_account.denied', 'service_account_request', req.id, {
+        by: approver,
+        legs,
+      });
+      return req;
+    }
+
+    const bothApproved =
+      req.securityDecision?.decision === 'approved' && req.ownerDecision?.decision === 'approved';
+    if (!bothApproved) {
+      await this.requests.save(req); // one leg in; still pending the other
+      return req;
+    }
+
+    req.status = 'approved';
+    await this.requests.save(req);
+    await this.audit.record(actor, 'service_account.approved', 'service_account_request', req.id, {
+      serviceAccountId: req.serviceAccountId,
+    });
+    // Provisioning to Authentik + Vault is S023 (picks up approved requests whose account is still `requested`).
+    this.log.log(`service-account request ${req.id} approved — awaiting provisioning (S023)`);
+    return req;
+  }
+
+  findById(id: string): Promise<ServiceAccountRequest | null> {
+    return this.requests.findOne({ where: { id } });
+  }
+
+  list(): Promise<ServiceAccountRequest[]> {
+    return this.requests.find({ order: { createdAt: 'DESC' } });
+  }
+}

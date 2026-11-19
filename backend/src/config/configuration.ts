@@ -48,6 +48,12 @@ export interface AppConfig {
     erpnextApiSecret: string;
     /** Matricule that approves when a manager can't be resolved from HR (AC-4, flagged). */
     fallbackApprover: string;
+    /**
+     * Matricule of the Security/Platform approver — the governance leg for a SERVICE-ACCOUNT request
+     * (IGA-06/S022), replacing the HR-manager leg (a service account has no manager). Four-eyes still
+     * applies (it must differ from the requester + the owner). Defaults to the fallback approver.
+     */
+    securityApprover: string;
   };
   workflow: {
     /**
@@ -152,6 +158,7 @@ export function loadConfig(): AppConfig {
       erpnextApiKey: (e.ERPNEXT_API_KEY ?? '') as string,
       erpnextApiSecret: (e.ERPNEXT_API_SECRET ?? '') as string,
       fallbackApprover: (e.FALLBACK_APPROVER ?? '') as string,
+      securityApprover: (e.SECURITY_APPROVER ?? e.FALLBACK_APPROVER ?? '') as string,
     },
     workflow: {
       allowApproverOverride: (e.ALLOW_APPROVER_OVERRIDE ?? 'false') === 'true',

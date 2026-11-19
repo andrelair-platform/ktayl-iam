@@ -2,20 +2,20 @@
 
 ## Columns
 
-| Name                | Type                     | Default                        | Nullable | Children | Parents | Comment |
-| ------------------- | ------------------------ | ------------------------------ | -------- | -------- | ------- | ------- |
-| authentik_username  | varchar(160)             |                                | true     |          |         |         |
-| created_at          | timestamp with time zone | now()                          | false    |          |         |         |
-| created_by          | varchar(32)              |                                | false    |          |         |         |
-| display_name        | varchar(200)             |                                | false    |          |         |         |
-| group_refs          | text[]                   | '{}'::text[]                   | false    |          |         |         |
-| id                  | uuid                     | gen_random_uuid()              | false    |          |         |         |
-| last_recertified_at | timestamp with time zone |                                | true     |          |         |         |
-| name                | varchar(120)             |                                | false    |          |         |         |
-| owner_matricule     | varchar(32)              |                                | false    |          |         |         |
-| status              | varchar(16)              | 'requested'::character varying | false    |          |         |         |
-| type                | varchar(16)              |                                | false    |          |         |         |
-| vault_secret_ref    | varchar(200)             |                                | true     |          |         |         |
+| Name                | Type                     | Default                        | Nullable | Children                                                            | Parents | Comment |
+| ------------------- | ------------------------ | ------------------------------ | -------- | ------------------------------------------------------------------- | ------- | ------- |
+| authentik_username  | varchar(160)             |                                | true     |                                                                     |         |         |
+| created_at          | timestamp with time zone | now()                          | false    |                                                                     |         |         |
+| created_by          | varchar(32)              |                                | false    |                                                                     |         |         |
+| display_name        | varchar(200)             |                                | false    |                                                                     |         |         |
+| group_refs          | text[]                   | '{}'::text[]                   | false    |                                                                     |         |         |
+| id                  | uuid                     | gen_random_uuid()              | false    | [public.service_account_request](public.service_account_request.md) |         |         |
+| last_recertified_at | timestamp with time zone |                                | true     |                                                                     |         |         |
+| name                | varchar(120)             |                                | false    |                                                                     |         |         |
+| owner_matricule     | varchar(32)              |                                | false    |                                                                     |         |         |
+| status              | varchar(16)              | 'requested'::character varying | false    |                                                                     |         |         |
+| type                | varchar(16)              |                                | false    |                                                                     |         |         |
+| vault_secret_ref    | varchar(200)             |                                | true     |                                                                     |         |         |
 
 ## Constraints
 
@@ -37,6 +37,7 @@
 ```mermaid
 erDiagram
 
+"public.service_account_request" }o--|| "public.service_account" : "FOREIGN KEY (service_account_id) REFERENCES service_account(id) ON DELETE CASCADE"
 
 "public.service_account" {
   varchar_160_ authentik_username
@@ -51,6 +52,19 @@ erDiagram
   varchar_16_ status
   varchar_16_ type
   varchar_200_ vault_secret_ref
+}
+"public.service_account_request" {
+  timestamp_with_time_zone created_at
+  uuid id
+  text justification
+  varchar_32_ owner_approver
+  jsonb owner_decision
+  varchar_32_ requester_id
+  varchar_32_ security_approver
+  jsonb security_decision
+  uuid service_account_id FK
+  varchar_20_ status
+  timestamp_with_time_zone updated_at
 }
 ```
 

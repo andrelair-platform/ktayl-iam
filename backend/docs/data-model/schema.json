@@ -693,6 +693,124 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.service_account_request",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "justification",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "owner_approver",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "owner_decision",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "requester_id",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "security_approver",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "security_decision",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "service_account_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_sa_request_service_account",
+          "def": "CREATE INDEX idx_sa_request_service_account ON public.service_account_request USING btree (service_account_id)",
+          "table": "public.service_account_request",
+          "columns": [
+            "service_account_id"
+          ]
+        },
+        {
+          "name": "service_account_request_pkey",
+          "def": "CREATE UNIQUE INDEX service_account_request_pkey ON public.service_account_request USING btree (id)",
+          "table": "public.service_account_request",
+          "columns": [
+            "id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "service_account_request_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.service_account_request",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_account_request_service_account_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (service_account_id) REFERENCES service_account(id) ON DELETE CASCADE",
+          "table": "public.service_account_request",
+          "referenced_table": "public.service_account",
+          "columns": [
+            "service_account_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_account_request_status_check",
+          "type": "CHECK",
+          "def": "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'denied'::character varying, 'cancelled'::character varying])::text[])))",
+          "table": "public.service_account_request",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        }
+      ]
     }
   ],
   "relations": [
@@ -734,6 +852,19 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (application_id) REFERENCES application(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.service_account_request",
+      "columns": [
+        "service_account_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.service_account",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (service_account_id) REFERENCES service_account(id) ON DELETE CASCADE"
     }
   ],
   "driver": {
