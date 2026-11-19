@@ -133,6 +133,20 @@ export class AuthentikClient {
     return (data.results ?? []).some((u) => String(u.username) === username);
   }
 
+  /**
+   * True if this matricule is an **active** directory user (IGA-07/S026 sponsor validation). An active
+   * employee has an enabled Authentik account; a leaver is `is_active=false` (S017 disable). Used to
+   * reject a terminated/unknown sponsor for an external collaborator.
+   */
+  async isActiveUser(username: string): Promise<boolean> {
+    const data = await this.get<{ results: any[] }>(
+      `/core/users/?username=${encodeURIComponent(username)}`,
+    );
+    return (data.results ?? []).some(
+      (u) => String(u.username) === username && Boolean(u.is_active),
+    );
+  }
+
   // ── user provisioning (S016 Joiner) ─────────────────────────────────────────
   /**
    * Get-or-create an Authentik user keyed by matricule (= username). Idempotent: returns the

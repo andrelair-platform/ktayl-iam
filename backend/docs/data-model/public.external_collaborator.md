@@ -2,22 +2,22 @@
 
 ## Columns
 
-| Name                | Type                     | Default                        | Nullable | Children | Parents | Comment |
-| ------------------- | ------------------------ | ------------------------------ | -------- | -------- | ------- | ------- |
-| authentik_username  | varchar(160)             |                                | true     |          |         |         |
-| created_at          | timestamp with time zone | now()                          | false    |          |         |         |
-| created_by          | varchar(32)              |                                | false    |          |         |         |
-| display_name        | varchar(200)             |                                | false    |          |         |         |
-| email               | varchar(200)             |                                | false    |          |         |         |
-| expires_at          | timestamp with time zone |                                | true     |          |         |         |
-| group_refs          | text[]                   | '{}'::text[]                   | false    |          |         |         |
-| id                  | uuid                     | gen_random_uuid()              | false    |          |         |         |
-| last_recertified_at | timestamp with time zone |                                | true     |          |         |         |
-| name                | varchar(120)             |                                | false    |          |         |         |
-| purpose             | text                     |                                | false    |          |         |         |
-| sponsor_matricule   | varchar(32)              |                                | false    |          |         |         |
-| status              | varchar(16)              | 'requested'::character varying | false    |          |         |         |
-| type                | varchar(20)              |                                | false    |          |         |         |
+| Name                | Type                     | Default                        | Nullable | Children                                                                        | Parents | Comment |
+| ------------------- | ------------------------ | ------------------------------ | -------- | ------------------------------------------------------------------------------- | ------- | ------- |
+| authentik_username  | varchar(160)             |                                | true     |                                                                                 |         |         |
+| created_at          | timestamp with time zone | now()                          | false    |                                                                                 |         |         |
+| created_by          | varchar(32)              |                                | false    |                                                                                 |         |         |
+| display_name        | varchar(200)             |                                | false    |                                                                                 |         |         |
+| email               | varchar(200)             |                                | false    |                                                                                 |         |         |
+| expires_at          | timestamp with time zone |                                | true     |                                                                                 |         |         |
+| group_refs          | text[]                   | '{}'::text[]                   | false    |                                                                                 |         |         |
+| id                  | uuid                     | gen_random_uuid()              | false    | [public.external_collaborator_request](public.external_collaborator_request.md) |         |         |
+| last_recertified_at | timestamp with time zone |                                | true     |                                                                                 |         |         |
+| name                | varchar(120)             |                                | false    |                                                                                 |         |         |
+| purpose             | text                     |                                | false    |                                                                                 |         |         |
+| sponsor_matricule   | varchar(32)              |                                | false    |                                                                                 |         |         |
+| status              | varchar(16)              | 'requested'::character varying | false    |                                                                                 |         |         |
+| type                | varchar(20)              |                                | false    |                                                                                 |         |         |
 
 ## Constraints
 
@@ -39,6 +39,7 @@
 ```mermaid
 erDiagram
 
+"public.external_collaborator_request" }o--|| "public.external_collaborator" : "FOREIGN KEY (collaborator_id) REFERENCES external_collaborator(id) ON DELETE CASCADE"
 
 "public.external_collaborator" {
   varchar_160_ authentik_username
@@ -55,6 +56,18 @@ erDiagram
   varchar_32_ sponsor_matricule
   varchar_16_ status
   varchar_20_ type
+}
+"public.external_collaborator_request" {
+  uuid collaborator_id FK
+  timestamp_with_time_zone created_at
+  uuid id
+  varchar_32_ requester_id
+  varchar_32_ security_approver
+  jsonb security_decision
+  varchar_32_ sponsor_approver
+  jsonb sponsor_decision
+  varchar_20_ status
+  timestamp_with_time_zone updated_at
 }
 ```
 
