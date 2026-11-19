@@ -13,6 +13,7 @@ import { ServiceAccountRequests1727001100000 } from './1727001100000-ServiceAcco
 import { ExternalCollaborators1727001200000 } from './1727001200000-ExternalCollaborators.js';
 import { ExternalCollaboratorRequests1727001300000 } from './1727001300000-ExternalCollaboratorRequests.js';
 import { ExternalCollaboratorCompany1727001400000 } from './1727001400000-ExternalCollaboratorCompany.js';
+import { ExternalCollaboratorSupplierRef1727001500000 } from './1727001500000-ExternalCollaboratorSupplierRef.js';
 
 /** Ordered migration set (run on boot via TypeORM `migrationsRun`). Append new migrations here. */
 export const MIGRATIONS = [
@@ -31,4 +32,5 @@ export const MIGRATIONS = [
   ExternalCollaborators1727001200000, // IGA-07/S025 — governed external-collaborator table
   ExternalCollaboratorRequests1727001300000, // IGA-07/S026 — external-collaborator request + Sponsor+Security four-eyes
   ExternalCollaboratorCompany1727001400000, // IGA-07 enhancement — collaborator company (null = freelance)
+  ExternalCollaboratorSupplierRef1727001500000, // IGA-07 pay-link (ADR-010) — read-only Supplier/contract ref (paid contractor)
 ];

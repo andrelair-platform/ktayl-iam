@@ -13,6 +13,7 @@
 | [007](#adr-007) | **Dual approval (four-eyes): manager + role owner** before any grant is provisioned | Proposed | SA/SEC |
 | [008](#adr-008) | **Matricule** = immutable 6-digit employee ID (from ERPNext) = Authentik username | Proposed | SA/TL |
 | [009](#adr-009) | **External collaborators** (IGA-07): governed human non-employee identities — sponsor + Security four-eyes, hard expiry, sponsor-Leaver safety net | **Accepted** | SA/SEC |
+| [010](#adr-010) | **Collaborator ↔ procurement pay-link**: a paid contractor references a finance Supplier record (read-only); IAM stays access-only, never writes the finance record | **Accepted** | SA/TL |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -149,3 +150,40 @@ directly in Authentik by hand* — no governance, no expiry, no audit, no four-e
 evidence). Reuses the IGA-06 entity/request/four-eyes/provision/recertify code → fast to build. Adds a human
 **invitation** provisioning path + a **scheduled expiry sweep** + a JML-Leaver hook. Build = stories
 S025–S030 (epic #99) on board #17.
+
+## ADR-010 — Collaborator ↔ procurement pay-link (a paid contractor's finance record) {#adr-010}
+**Status: ACCEPTED (owner-approved + built) · 2026-11-19.**
+
+**Context.** IGA-07 (ADR-009) provisions an external collaborator's **access** (Authentik identity + scoped
+groups). But a **paid contractor also has to be paid** — which needs a **finance record**. Two precisions
+surfaced in review: (1) a contractor is **not** an HR *Employee* (no payroll) — they're a **Supplier/vendor**
+paid via **Accounts Payable / Buying** (ERPNext Buying + the **Procurement & Contract Management** domain,
+board #31); (2) IAM is **access-only** and, per ADR-009, **never writes back to ERPNext**. So IGA-07 as built
+gives access but leaves the access **untraceable to the paid-contractor record** — a real gap for real use.
+Service/technical accounts are **out of scope** (non-human, never paid — correctly no finance record).
+
+**Decision (proposed).** Keep the two concerns separate, owned by their systems, and **link** them — IAM never
+creates the finance record:
+- **IAM owns ACCESS** (unchanged). **Procurement/Finance owns the VENDOR/CONTRACT/PAYMENT** (the **Supplier**
+  + contract + invoices) in **ERPNext Buying / domain #31**.
+- Add an **optional, read-only `supplierRef`** on `external_collaborator` = the ERPNext **Supplier ID** (or the
+  procurement **contract** reference) — the link from *access identity* → *paid-contractor record*.
+- **Prompt + soft-gate by engagement type:** for **paid** types (`contractor`/`broker`/`partner`) the UI
+  **prompts** for the pay-link and **flags "⚠ no payment record linked"** when absent; a genuinely **unpaid**
+  external party (e.g. a regulator-appointed auditor we don't pay) may omit it. It is **not** a hard block —
+  access governance must not be hostage to a finance step — but the gap is **visible + audited**, not silent.
+- **Handshake (phased):** *now* — procurement creates the Supplier (its system of record) → the manager/IT
+  enters the `supplierRef` on the IAM request; IAM **stores + surfaces** it (traceability). *Later (domain #31)*
+  — live-validate the ref against ERPNext (read-only) and/or emit an "external-collaborator onboarded" event
+  that procurement consumes to open a Supplier/contract. **IAM still never writes the finance record** (ADR-009 holds).
+
+**Rejected.** (a) *IAM creates the ERPNext Supplier on collaborator creation* — couples IAM to finance, makes
+it a source of truth for vendors/contracts it doesn't own, and breaks the ADR-009 "never writes back to ERPNext"
+boundary. (b) *No link at all* — leaves paid access untraceable to the payment record (the gap this closes).
+(c) *Treat the contractor as an HR Employee* — wrong lifecycle (payroll/JML) for a non-employee.
+
+**Consequences.** Access ↔ payment is **traceable + auditable** without coupling IAM to finance; the full
+Supplier/contract automation is a **Procurement (#31)** deliverable, not an IAM one; near-term IAM carries a
+reference + a soft "missing pay-link" flag. Build (if accepted): add `supplier_ref` (nullable) + migration;
+plumb through DTO/service/controller/workflow + audit; UI field ("Supplier / contract ref — required to pay a
+contractor") + the paid-type flag. Then QA + promote the complete flow together.

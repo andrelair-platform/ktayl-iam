@@ -43,6 +43,16 @@ export class ExternalCollaborator {
   @Column({ type: 'varchar', length: 200, nullable: true })
   company!: string | null;
 
+  /**
+   * The **pay-link** (ADR-010): a READ-ONLY reference to the finance/procurement **Supplier** (or contract)
+   * record that a **paid** contractor is paid against — ERPNext Buying / Procurement domain (#31). IAM only
+   * *stores + surfaces* it for traceability; it **never creates or writes** the finance record (ADR-009 holds).
+   * Null = no payment record linked yet (a soft, audited gap for paid types; legitimately absent for an
+   * unpaid external party such as a regulator-appointed auditor).
+   */
+  @Column({ name: 'supplier_ref', type: 'varchar', length: 120, nullable: true })
+  supplierRef!: string | null;
+
   /** The accountable internal **sponsor** = the manager who requests + owns this collaborator (matricule →
    *  an ACTIVE ERPNext employee; validated at request time, S026). The collaborator is attached to them. */
   @Column({ name: 'sponsor_matricule', type: 'varchar', length: 32 })

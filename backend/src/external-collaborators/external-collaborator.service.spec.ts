@@ -62,6 +62,18 @@ describe('ExternalCollaboratorService.create', () => {
     expect(audit2.record.mock.calls[0][4]).toMatchObject({ company: "freelance" });
   });
 
+  it('captures the pay-link (supplierRef) when given, and stores null when omitted (ADR-010)', async () => {
+    const { svc, repo, audit } = makeService();
+    await svc.create({ ...INPUT, supplierRef: 'SUP-00042' });
+    expect(repo.create.mock.calls[0][0].supplierRef).toBe('SUP-00042');
+    expect(audit.record.mock.calls[0][4]).toMatchObject({ supplierRef: 'SUP-00042' });
+
+    const { svc: svc2, repo: repo2, audit: audit2 } = makeService();
+    await svc2.create(INPUT); // no supplierRef
+    expect(repo2.create.mock.calls[0][0].supplierRef).toBeNull();
+    expect(audit2.record.mock.calls[0][4]).toMatchObject({ supplierRef: null });
+  });
+
   it('never stores a credential value (only the governance shape)', async () => {
     const { svc, repo } = makeService();
     await svc.create(INPUT);
