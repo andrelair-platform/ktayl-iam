@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -20,6 +21,7 @@ import {
   ServiceAccountService,
   type CreateServiceAccountInput,
 } from './service-account.service.js';
+import { ServiceAccountProvisioningService } from './service-account-provisioning.service.js';
 
 export type SaLeg = 'security' | 'owner';
 
@@ -46,6 +48,12 @@ export class ServiceAccountWorkflowService {
     private readonly accounts: ServiceAccountService,
     private readonly audit: AuditService,
     config: ConfigService,
+    /**
+     * S023 provisioning. @Optional so the S022 unit tests (and any wiring before S023) construct the
+     * workflow without it — when absent, an approval simply logs "awaiting provisioning".
+     */
+    @Optional()
+    private readonly provisioning?: ServiceAccountProvisioningService,
   ) {
     const dir = config.get<AppConfig['directory']>('directory')!;
     this.securityApprover = dir.securityApprover;
@@ -161,8 +169,21 @@ export class ServiceAccountWorkflowService {
     await this.audit.record(actor, 'service_account.approved', 'service_account_request', req.id, {
       serviceAccountId: req.serviceAccountId,
     });
-    // Provisioning to Authentik + Vault is S023 (picks up approved requests whose account is still `requested`).
-    this.log.log(`service-account request ${req.id} approved — awaiting provisioning (S023)`);
+
+    // S023 — best-effort provision to Authentik + Vault now the four-eyes gate has cleared. A failure
+    // is retryable (POST /service-accounts/:id/provision) and is itself audited; it does NOT un-approve
+    // the governance decision, so we never roll the request back on a downstream (network) error.
+    if (this.provisioning) {
+      try {
+        await this.provisioning.provision(req.serviceAccountId, actor);
+      } catch (err) {
+        this.log.warn(
+          `auto-provisioning of ${req.serviceAccountId} failed (retryable): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    } else {
+      this.log.log(`service-account request ${req.id} approved — awaiting provisioning (S023)`);
+    }
     return req;
   }
 

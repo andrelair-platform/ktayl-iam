@@ -14,6 +14,7 @@ import type { AuthUser } from '../auth/oidc.strategy.js';
 import type { AppConfig } from '../config/configuration.js';
 import { ServiceAccountWorkflowService } from './service-account-workflow.service.js';
 import { ServiceAccountService } from './service-account.service.js';
+import { ServiceAccountProvisioningService } from './service-account-provisioning.service.js';
 import { CreateServiceAccountRequestDto } from './dto/create-service-account-request.dto.js';
 import { DecideDto } from '../workflow/dto/decide.dto.js';
 
@@ -39,6 +40,7 @@ export class ServiceAccountsController {
   constructor(
     private readonly workflow: ServiceAccountWorkflowService,
     private readonly accounts: ServiceAccountService,
+    private readonly provisioning: ServiceAccountProvisioningService,
     config: ConfigService,
   ) {
     this.allowOverride = config.get<AppConfig['workflow']>('workflow')!.allowApproverOverride;
@@ -86,6 +88,18 @@ export class ServiceAccountsController {
     // the server still rejects self-approval + any approver not on a leg. The signed-in user is audited.
     const approver = this.allowOverride && dto.approver ? dto.approver : actor;
     return this.workflow.decide(id, approver, dto.decision, dto.comment, actor);
+  }
+
+  /**
+   * Re-run provisioning for an approved account whose auto-provision failed (S023). Admin-only — it
+   * hits Authentik + Vault; it is idempotent (an already-active account is a no-op) and audited.
+   */
+  @Post(':id/provision')
+  provision(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {
+    if (!isAdminOf(req)) {
+      throw new ForbiddenException('Only an admin may (re)provision a service account.');
+    }
+    return this.provisioning.provision(id, actorOf(req));
   }
 
   @Get()
