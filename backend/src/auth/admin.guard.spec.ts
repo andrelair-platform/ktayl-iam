@@ -11,9 +11,11 @@ function ctx(user: unknown) {
     switchToHttp: () => ({ getRequest: () => ({ user }) }),
   } as any;
 }
-/** Reflector double whose getAllAndOverride returns a fixed @AdminOnly value. */
-function guardWith(adminOnly: boolean) {
-  return new AdminGuard({ getAllAndOverride: () => adminOnly } as any);
+/** Reflector double: distinguishes @Public (isPublic) from @AdminOnly (isAdminOnly). */
+function guardWith(adminOnly: boolean, isPublic = false) {
+  return new AdminGuard({
+    getAllAndOverride: (key: string) => (key === 'isPublic' ? isPublic : adminOnly),
+  } as any);
 }
 
 describe('AdminGuard (S009)', () => {
@@ -31,5 +33,9 @@ describe('AdminGuard (S009)', () => {
 
   it('403s when there is no user on an @AdminOnly route', () => {
     expect(() => guardWith(true).canActivate(ctx(undefined))).toThrow(ForbiddenException);
+  });
+
+  it('skips the admin check on a @Public route (ADR-013 service endpoint — its own guard secures it)', () => {
+    expect(guardWith(true, true).canActivate(ctx(undefined))).toBe(true);
   });
 });

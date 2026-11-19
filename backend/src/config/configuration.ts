@@ -110,6 +110,19 @@ export interface AppConfig {
      */
     defaultMailboxPassword: string;
   };
+  /** ADR-013 — the n8n integration seam (external-collaborator → ERPNext HR worker). */
+  integration: {
+    /**
+     * Shared service key n8n presents as `X-IAM-Service-Key` to call the `hr-worker-ref` writeback
+     * (ADR-013). From Vault→ESO. **Blank → the writeback endpoint is fail-closed** (denies all).
+     */
+    serviceKey: string;
+    /**
+     * The n8n Webhook URL IAM POSTs the signed `onboarded` event to (ADR-013). **Blank → webhook emit is
+     * off** (the durable NATS publish still happens). Set via env N8N_ONBOARD_WEBHOOK_URL.
+     */
+    n8nOnboardWebhookUrl: string;
+  };
 }
 
 const REQUIRED = [
@@ -199,6 +212,10 @@ export function loadConfig(): AppConfig {
       stalwartAdminSecret: (e.STALWART_ADMIN_SECRET ?? '') as string,
       mailDomain: (e.MAIL_DOMAIN ?? 'devandre.sbs') as string,
       defaultMailboxPassword: (e.DEFAULT_MAILBOX_PASSWORD ?? '') as string,
+    },
+    integration: {
+      serviceKey: (e.IAM_SERVICE_KEY ?? '') as string,
+      n8nOnboardWebhookUrl: (e.N8N_ONBOARD_WEBHOOK_URL ?? '') as string,
     },
   };
 }
