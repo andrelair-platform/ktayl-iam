@@ -172,6 +172,12 @@ export function AppShell({
 
   return (
     <div className="flex min-h-dvh bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+      >
+        Skip to content
+      </a>
       {/* Sidebar (desktop) */}
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-card md:flex">
         <div className="flex items-center gap-2 px-4 py-4">
@@ -198,7 +204,10 @@ export function AppShell({
             </span>
             <DropdownMenu open={open} onOpenChange={setOpen}>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <button
+                  aria-label={`Account menu for ${me.username}`}
+                  className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
                   <Avatar className="size-8">
                     <AvatarFallback className="bg-primary text-xs text-primary-foreground">
                       {initials(undefined, me.username)}
@@ -235,7 +244,7 @@ export function AppShell({
         {/* Mobile nav (simple) */}
         <div className="border-b bg-card md:hidden">{sidebar}</div>
 
-        <main className="flex-1 p-4 md:p-8">
+        <main id="main-content" className="flex-1 p-4 md:p-8">
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>
