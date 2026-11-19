@@ -169,6 +169,38 @@ export class AuthentikClient {
     return Number(created.pk);
   }
 
+  /**
+   * Ensure a human EXTERNAL-COLLABORATOR user exists (IGA-07/S027) — like {@link ensureUser} but filed
+   * under the `external-collaborators` path for org separation; a loginable `internal`-type user who sets
+   * their own credential via the invitation/recovery link. Idempotent (returns the existing pk).
+   */
+  async ensureExternalUser(username: string, name: string, email: string): Promise<number> {
+    const existing = await this.getUserPk(username);
+    if (existing !== null) return existing;
+    this.log.log(`creating Authentik external collaborator "${username}"`);
+    const created = await this.send<{ pk: number }>('POST', '/core/users/', {
+      username,
+      name,
+      email,
+      is_active: true,
+      type: 'internal',
+      path: 'external-collaborators',
+    });
+    return Number(created.pk);
+  }
+
+  /**
+   * Issue a recovery/invitation link for a user (IGA-07/S027) — the external collaborator uses it to set
+   * their initial credential (no machine token for a human). Returns the one-time link, or null if the
+   * user is unknown. The link value is NEVER stored or audited (it's handed to the invite flow).
+   */
+  async createRecoveryLink(username: string): Promise<string | null> {
+    const pk = await this.getUserPk(username);
+    if (pk === null) return null;
+    const res = await this.send<{ link: string }>('POST', `/core/users/${pk}/recovery/`, {});
+    return res.link ?? null;
+  }
+
   /** True if provisioning a service account (create user + mint token) is possible. */
   get canProvision(): boolean {
     return Boolean(this.base && this.token);

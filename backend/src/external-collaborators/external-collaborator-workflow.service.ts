@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -21,6 +22,7 @@ import {
   ExternalCollaboratorService,
   type CreateExternalCollaboratorInput,
 } from './external-collaborator.service.js';
+import { ExternalCollaboratorProvisioningService } from './external-collaborator-provisioning.service.js';
 
 export type EcLeg = 'security' | 'sponsor';
 
@@ -54,6 +56,9 @@ export class ExternalCollaboratorWorkflowService {
     private readonly authentik: AuthentikClient,
     private readonly audit: AuditService,
     config: ConfigService,
+    /** S027 provisioning. @Optional so the S026 unit tests construct the workflow without it. */
+    @Optional()
+    private readonly provisioning?: ExternalCollaboratorProvisioningService,
   ) {
     const dir = config.get<AppConfig['directory']>('directory')!;
     this.securityApprover = dir.securityApprover;
@@ -196,8 +201,20 @@ export class ExternalCollaboratorWorkflowService {
       req.id,
       { collaboratorId: req.collaboratorId },
     );
-    // Provisioning to Authentik is S027 (picks up approved requests whose collaborator is `requested`).
-    this.log.log(`external-collaborator request ${req.id} approved — awaiting provisioning (S027)`);
+
+    // S027 — best-effort provision to Authentik now the four-eyes gate has cleared. A failure is
+    // retryable (POST /collaborators/:id/provision), audited, and does NOT un-approve the decision.
+    if (this.provisioning) {
+      try {
+        await this.provisioning.provision(req.collaboratorId, actor);
+      } catch (err) {
+        this.log.warn(
+          `auto-provisioning of ${req.collaboratorId} failed (retryable): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    } else {
+      this.log.log(`external-collaborator request ${req.id} approved — awaiting provisioning (S027)`);
+    }
     return req;
   }
 
