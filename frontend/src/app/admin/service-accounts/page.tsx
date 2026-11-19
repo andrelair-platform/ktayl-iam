@@ -1,22 +1,55 @@
 "use client";
 
-/* ktayl Access Governance — governed service accounts (IGA-06, S021–S024). List the non-human
-   identities, file a request (dual-approved: a Security approver + the owner — four-eyes), decide a
-   leg, (re)provision to Authentik + Vault, and recertify. Admin-only (the backend's global guard +
-   the per-action checks); a 401 sends the operator back through SSO. Same-origin /api BFF. */
+/* Service accounts console (IGA-06) — the lifecycle redesign. Request → four-eyes (Security + owner,
+   by NAME) → provision → recertify, shown as journeys with state. shadcn/ui + the shared app shell,
+   people resolved to name·matricule, states + toasts + confirm dialogs. */
 
 import { useCallback, useEffect, useState } from "react";
+import { Bot, MoreHorizontal, Plus, RefreshCcw, ShieldCheck, UserRound } from "lucide-react";
+import { toast } from "sonner";
+import { api, ApiError } from "@/lib/api";
+import { useDirectory } from "@/hooks/use-directory";
+import { AppShell, useCan } from "@/components/app-shell";
+import { PersonLabel } from "@/components/person-label";
+import { StatusStepper, type Step } from "@/components/status-stepper";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-const NAVY = "#00375A";
-const ORANGE = "#E8690B";
-const TYPES = ["qa", "m2m", "automation"] as const;
-
-type Decision = { approver: string; decision: string; at: string; comment?: string } | null;
+type Decision = { approver: string; decision: "approved" | "denied"; at: string; comment?: string } | null;
 type ServiceAccount = {
   id: string;
   name: string;
   displayName: string;
-  type: string;
+  type: "qa" | "m2m" | "automation";
   ownerMatricule: string;
   groupRefs: string[];
   status: "requested" | "active" | "disabled";
@@ -36,168 +69,459 @@ type SaRequest = {
   ownerDecision: Decision;
 };
 
-async function api(path: string, init?: RequestInit) {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
-  if (res.status === 401) throw new Error("UNAUTHORISED");
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(Array.isArray(body.message) ? body.message.join(", ") : body.message ?? `HTTP ${res.status}`);
+const STEPS: Step[] = [
+  { key: "filed", label: "Filed" },
+  { key: "security", label: "Security" },
+  { key: "owner", label: "Owner" },
+  { key: "provision", label: "Provision" },
+  { key: "active", label: "Active" },
+];
+
+function stepState(req: SaRequest, acc?: ServiceAccount): { activeIndex: number; failed: boolean } {
+  if (acc?.status === "active") return { activeIndex: 4, failed: false };
+  if (req.status === "denied") {
+    const idx = req.securityDecision?.decision === "denied" ? 1 : 2;
+    return { activeIndex: idx, failed: true };
   }
-  return res.status === 204 ? null : res.json();
+  const sec = req.securityDecision?.decision === "approved";
+  const own = req.ownerDecision?.decision === "approved";
+  if (sec && own) return { activeIndex: 3, failed: false };
+  if (sec) return { activeIndex: 2, failed: false };
+  return { activeIndex: 1, failed: false };
 }
 
-export default function ServiceAccountsConsole() {
+function statusBadge(s: string) {
+  if (s === "active" || s === "approved")
+    return <Badge variant="success">{s}</Badge>;
+  if (s === "denied" || s === "disabled")
+    return <Badge variant="destructive">{s}</Badge>;
+  return <Badge variant="secondary">{s}</Badge>;
+}
+
+export default function ServiceAccountsPage() {
+  const dir = useDirectory();
+  const can = useCan();
+  const nameOf = (m?: string | null) => (m ? dir.get(m)?.name : undefined);
+
   const [accounts, setAccounts] = useState<ServiceAccount[]>([]);
   const [requests, setRequests] = useState<SaRequest[]>([]);
   const [due, setDue] = useState<ServiceAccount[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [unauth, setUnauth] = useState(false);
-  const [denied, setDenied] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/auth/me", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((m) => { if (active && m && !m.isAdmin) setDenied(true); })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
+  const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
       const [a, r, d] = await Promise.all([
-        api("/service-accounts"),
-        api("/service-accounts/requests"),
-        api("/service-accounts/due?days=90"),
+        api<ServiceAccount[]>("/service-accounts"),
+        api<SaRequest[]>("/service-accounts/requests"),
+        api<ServiceAccount[]>("/service-accounts/due?days=90"),
       ]);
-      setAccounts(a); setRequests(r); setDue(d); setError(null);
+      setAccounts(a);
+      setRequests(r);
+      setDue(d);
+      setError(null);
     } catch (e) {
-      if ((e as Error).message === "UNAUTHORISED") setUnauth(true);
-      else setError((e as Error).message);
+      setError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial load — inline promise chain (not a direct reload() call) so setState lands in an async
-  // callback, per react-hooks/set-state-in-effect. `reload` (above) is for the action handlers.
   useEffect(() => {
     let active = true;
     Promise.all([
-      api("/service-accounts"),
-      api("/service-accounts/requests"),
-      api("/service-accounts/due?days=90"),
+      api<ServiceAccount[]>("/service-accounts"),
+      api<SaRequest[]>("/service-accounts/requests"),
+      api<ServiceAccount[]>("/service-accounts/due?days=90"),
     ])
-      .then(([a, r, d]) => { if (active) { setAccounts(a); setRequests(r); setDue(d); setError(null); } })
-      .catch((e: Error) => active && (e.message === "UNAUTHORISED" ? setUnauth(true) : setError(e.message)))
+      .then(([a, r, d]) => {
+        if (active) {
+          setAccounts(a);
+          setRequests(r);
+          setDue(d);
+          setError(null);
+        }
+      })
+      .catch((e) => active && setError(e instanceof ApiError ? e.message : String(e)))
       .finally(() => active && setLoading(false));
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const act = async (fn: () => Promise<unknown>) => {
-    try { await fn(); await reload(); setError(null); }
-    catch (e) { setError((e as Error).message); }
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
+    try {
+      await fn();
+      toast.success(ok);
+      await reload();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : String(e));
+    }
   };
 
+  const pending = requests.filter((r) => r.status === "pending");
   const dueIds = new Set(due.map((d) => d.id));
 
-  if (denied) return (
-    <Shell><Card>
-      <p style={{ margin: 0, color: "#3b4a55" }}>The service-accounts console requires the Access Governance admin role.</p>
-      <a href="/me" style={btn}>Go to your console →</a>
-    </Card></Shell>
-  );
-  if (unauth) return (
-    <Shell><Card>
-      <p style={{ margin: 0, color: "#3b4a55" }}>Your session has expired.</p>
-      <a href="/api/auth/login" style={btn}>Sign in with Authentik →</a>
-    </Card></Shell>
-  );
-
   return (
-    <Shell>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 30, fontWeight: 800, color: NAVY, margin: "0 0 4px" }}>Service accounts</h1>
-        <a href="/admin" style={{ color: ORANGE, fontWeight: 600, fontSize: 14 }}>← Catalog</a>
-      </div>
-      <p style={{ color: "#3b4a55", marginTop: 0 }}>
-        Governed non-human identities. A request is <strong>dual-approved</strong> (a Security approver <em>and</em> the
-        owner — four-eyes, no self-approval) before it is provisioned to Authentik and its credential minted into Vault.
-        Owners <strong>recertify</strong> them periodically.
+    <AppShell title="Service accounts" actions={can("service_accounts:manage") ? <NewRequestDialog onDone={reload} /> : null}>
+      <p className="mb-5 max-w-2xl text-sm text-muted-foreground">
+        Governed non-human identities. A request is <strong>dual-approved</strong> (a Security approver and the
+        owner — four-eyes, no self-approval) before it is provisioned to Authentik and its credential minted
+        into Vault. Owners recertify them periodically.
       </p>
 
-      {error && <div style={{ ...card, borderColor: "#d33", color: "#a11" }}>Error: {error}</div>}
+      {error && (
+        <Card className="mb-4 border-destructive/40 p-4 text-sm text-destructive">
+          <div className="flex items-center justify-between gap-3">
+            <span>Error: {error}</span>
+            <Button size="sm" variant="outline" onClick={reload}>
+              <RefreshCcw className="size-3.5" /> Retry
+            </Button>
+          </div>
+        </Card>
+      )}
 
-      <NewRequestForm onDone={reload} onError={setError} />
+      {loading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-9 w-72" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      ) : (
+        <Tabs defaultValue="pending">
+          <TabsList>
+            <TabsTrigger value="pending">Pending ({pending.length})</TabsTrigger>
+            <TabsTrigger value="accounts">Accounts ({accounts.length})</TabsTrigger>
+            <TabsTrigger value="due">Due for recert ({due.length})</TabsTrigger>
+          </TabsList>
 
-      {loading ? <p style={{ color: "#3b4a55" }}>Loading…</p> : (
-        <>
-          {/* Pending requests */}
-          <section style={card}>
-            <h2 style={h2}>Requests</h2>
-            {requests.length === 0 ? <p style={muted}>No requests yet.</p> : requests.map((r) => {
-              const sa = accounts.find((a) => a.id === r.serviceAccountId);
-              return (
-                <div key={r.id} style={{ borderTop: "1px solid #eef2f5", padding: "10px 0" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-                    <strong style={{ color: NAVY }}>{sa?.name ?? r.serviceAccountId}</strong>
-                    <span style={statusPill(r.status)}>{r.status}</span>
-                  </div>
-                  <p style={{ ...muted, margin: "4px 0" }}>“{r.justification}” — by {r.requesterId}</p>
-                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <Leg label="Security" approver={r.securityApprover} decision={r.securityDecision} />
-                    <Leg label="Owner" approver={r.ownerApprover} decision={r.ownerDecision} />
-                  </div>
-                  {r.status === "pending" && (
-                    <DecideBar onApprove={(approver) => act(() => api(`/service-accounts/requests/${r.id}/decide`, { method: "POST", body: JSON.stringify({ decision: "approved", approver }) }))}
-                               onDeny={(approver, comment) => act(() => api(`/service-accounts/requests/${r.id}/decide`, { method: "POST", body: JSON.stringify({ decision: "denied", approver, comment }) }))} />
-                  )}
-                </div>
-              );
-            })}
-          </section>
+          {/* Pending requests — the lifecycle cards */}
+          <TabsContent value="pending" className="space-y-4 pt-4">
+            {pending.length === 0 ? (
+              <EmptyState icon={ShieldCheck} line="No requests awaiting a decision." />
+            ) : (
+              pending.map((r) => {
+                const sa = accounts.find((a) => a.id === r.serviceAccountId);
+                const st = stepState(r, sa);
+                return (
+                  <Card key={r.id} className="p-5">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 font-semibold text-primary">
+                        <Bot className="size-4 text-brand" />
+                        {sa?.name ?? r.serviceAccountId}
+                        {sa && <span className="text-xs font-normal text-muted-foreground">· {sa.type}</span>}
+                      </div>
+                      {statusBadge(r.status)}
+                    </div>
+
+                    <div className="mb-4 px-2">
+                      <StatusStepper steps={STEPS} activeIndex={st.activeIndex} failed={st.failed} />
+                    </div>
+
+                    <p className="mb-4 text-sm text-muted-foreground">
+                      “{r.justification}” — by{" "}
+                      <PersonLabel matricule={r.requesterId} name={nameOf(r.requesterId)} />
+                    </p>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Leg
+                        icon={ShieldCheck}
+                        label="Security approver"
+                        matricule={r.securityApprover}
+                        name={nameOf(r.securityApprover)}
+                        decision={r.securityDecision}
+                        canDecide={can("requests:decide")}
+                        onApprove={() =>
+                          run(
+                            () =>
+                              api(`/service-accounts/requests/${r.id}/decide`, {
+                                method: "POST",
+                                body: JSON.stringify({ decision: "approved", approver: r.securityApprover }),
+                              }),
+                            "Security leg approved",
+                          )
+                        }
+                        onDeny={(comment) =>
+                          run(
+                            () =>
+                              api(`/service-accounts/requests/${r.id}/decide`, {
+                                method: "POST",
+                                body: JSON.stringify({ decision: "denied", approver: r.securityApprover, comment }),
+                              }),
+                            "Request denied",
+                          )
+                        }
+                      />
+                      <Leg
+                        icon={UserRound}
+                        label="Owner"
+                        matricule={r.ownerApprover}
+                        name={nameOf(r.ownerApprover)}
+                        decision={r.ownerDecision}
+                        canDecide={can("requests:decide")}
+                        onApprove={() =>
+                          run(
+                            () =>
+                              api(`/service-accounts/requests/${r.id}/decide`, {
+                                method: "POST",
+                                body: JSON.stringify({ decision: "approved", approver: r.ownerApprover }),
+                              }),
+                            "Owner leg approved",
+                          )
+                        }
+                        onDeny={(comment) =>
+                          run(
+                            () =>
+                              api(`/service-accounts/requests/${r.id}/decide`, {
+                                method: "POST",
+                                body: JSON.stringify({ decision: "denied", approver: r.ownerApprover, comment }),
+                              }),
+                            "Request denied",
+                          )
+                        }
+                      />
+                    </div>
+                    {sa && (
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        Groups: {sa.groupRefs.join(", ")}
+                      </p>
+                    )}
+                  </Card>
+                );
+              })
+            )}
+          </TabsContent>
 
           {/* Accounts */}
-          <section style={card}>
-            <h2 style={h2}>Accounts</h2>
-            {accounts.length === 0 ? <p style={muted}>No service accounts yet.</p> : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead><tr style={{ textAlign: "left", color: "#6b7a84" }}>
-                  <th style={th}>Name</th><th style={th}>Type</th><th style={th}>Owner</th><th style={th}>Status</th><th style={th}>Groups</th><th style={th}>Recertified</th><th style={th} />
-                </tr></thead>
-                <tbody>{accounts.map((a) => (
-                  <tr key={a.id} style={{ borderTop: "1px solid #eef2f5" }}>
-                    <td style={td}><strong>{a.name}</strong><div style={muted}>{a.displayName}</div></td>
-                    <td style={td}>{a.type}</td>
-                    <td style={td}>{a.ownerMatricule}</td>
-                    <td style={td}><span style={statusPill(a.status)}>{a.status}</span></td>
-                    <td style={td}>{a.groupRefs.join(", ")}</td>
-                    <td style={td}>{a.lastRecertifiedAt ? new Date(a.lastRecertifiedAt).toLocaleDateString() : <span style={{ color: "#a11" }}>{dueIds.has(a.id) ? "due" : "never"}</span>}</td>
-                    <td style={{ ...td, whiteSpace: "nowrap" }}>
-                      {a.status === "active" && <button style={smallBtn} onClick={() => act(() => api(`/service-accounts/${a.id}/recertify`, { method: "POST" }))}>Recertify</button>}
-                      {a.status !== "disabled" && <button style={smallBtnGhost} onClick={() => act(() => api(`/service-accounts/${a.id}/provision`, { method: "POST" }))}>Provision</button>}
-                    </td>
-                  </tr>
-                ))}</tbody>
-              </table>
+          <TabsContent value="accounts" className="pt-4">
+            {accounts.length === 0 ? (
+              <EmptyState icon={Bot} line="No service accounts yet." />
+            ) : (
+              <Card className="overflow-hidden p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Owner</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Groups</TableHead>
+                      <TableHead>Recertified</TableHead>
+                      <TableHead className="w-10" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {accounts.map((a) => (
+                      <TableRow key={a.id}>
+                        <TableCell>
+                          <div className="font-medium">{a.name}</div>
+                          <div className="text-xs text-muted-foreground">{a.displayName}</div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{a.type}</TableCell>
+                        <TableCell>
+                          <PersonLabel matricule={a.ownerMatricule} name={nameOf(a.ownerMatricule)} />
+                        </TableCell>
+                        <TableCell>{statusBadge(a.status)}</TableCell>
+                        <TableCell className="text-muted-foreground">{a.groupRefs.join(", ")}</TableCell>
+                        <TableCell>
+                          {a.lastRecertifiedAt ? (
+                            new Date(a.lastRecertifiedAt).toLocaleDateString()
+                          ) : dueIds.has(a.id) ? (
+                            <Badge variant="warning">due</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">never</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <AccountMenu account={a} run={run} canManage={can("service_accounts:manage")} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
             )}
-            {due.length > 0 && <p style={{ ...muted, marginTop: 8 }}>{due.length} account(s) due for recertification (never attested or &gt; 90 days).</p>}
-          </section>
-        </>
+          </TabsContent>
+
+          {/* Due for recert */}
+          <TabsContent value="due" className="pt-4">
+            {due.length === 0 ? (
+              <EmptyState icon={RefreshCcw} line="Nothing due for recertification. 🎉" />
+            ) : (
+              <Card className="p-4 text-sm">
+                {due.length} active account(s) need re-attestation (never attested or &gt; 90 days). Recertify
+                them from the <strong>Accounts</strong> tab.
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
-    </Shell>
+    </AppShell>
   );
 }
 
-function NewRequestForm({ onDone, onError }: { onDone: () => void; onError: (m: string) => void }) {
+function Leg({
+  icon: Icon,
+  label,
+  matricule,
+  name,
+  decision,
+  canDecide,
+  onApprove,
+  onDeny,
+}: {
+  icon: typeof ShieldCheck;
+  label: string;
+  matricule: string | null;
+  name?: string;
+  decision: Decision;
+  canDecide: boolean;
+  onApprove: () => void;
+  onDeny: (comment: string) => void;
+}) {
+  const decided = decision?.decision;
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3">
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <Icon className="size-3.5" /> {label}
+      </div>
+      <PersonLabel matricule={matricule} name={name} className="text-sm" />
+      <div className="mt-2">
+        {decided === "approved" ? (
+          <Badge variant="success">approved</Badge>
+        ) : decided === "denied" ? (
+          <Badge variant="destructive">denied</Badge>
+        ) : canDecide ? (
+          <div className="flex gap-2">
+            <Button size="sm" variant="success" onClick={onApprove}>
+              Approve
+            </Button>
+            <DenyDialog onDeny={onDeny} />
+          </div>
+        ) : (
+          <Badge variant="secondary">pending</Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DenyDialog({ onDeny }: { onDeny: (comment: string) => void }) {
+  const [comment, setComment] = useState("");
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">
+          Deny
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Deny this request?</DialogTitle>
+          <DialogDescription>
+            Denying any leg rejects the whole request. A reason is recorded in the audit log.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label htmlFor="deny-reason">Reason</Label>
+          <Input
+            id="deny-reason"
+            placeholder="Why is this denied?"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+          />
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="ghost">Cancel</Button>
+          </DialogClose>
+          <DialogClose asChild>
+            <Button variant="destructive" onClick={() => onDeny(comment)}>
+              Deny request
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AccountMenu({
+  account,
+  run,
+  canManage,
+}: {
+  account: ServiceAccount;
+  run: (fn: () => Promise<unknown>, ok: string) => Promise<void>;
+  canManage: boolean;
+}) {
+  const [confirmProvision, setConfirmProvision] = useState(false);
+  if (!canManage) return null;
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="icon-sm" variant="ghost" aria-label="Account actions">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {account.status === "active" && (
+            <DropdownMenuItem
+              onSelect={() =>
+                run(
+                  () => api(`/service-accounts/${account.id}/recertify`, { method: "POST" }),
+                  `Recertified ${account.name}`,
+                )
+              }
+            >
+              Recertify
+            </DropdownMenuItem>
+          )}
+          {account.status !== "disabled" && (
+            <DropdownMenuItem onSelect={() => setConfirmProvision(true)}>
+              {account.status === "active" ? "Re-provision" : "Provision"}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={confirmProvision} onOpenChange={setConfirmProvision}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Provision “{account.name}”?</DialogTitle>
+            <DialogDescription>
+              This creates/updates the Authentik service account, adds it to {account.groupRefs.join(", ")},
+              mints its token, and (if configured) writes it to Vault. The account becomes active.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmProvision(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="brand"
+              onClick={() => {
+                setConfirmProvision(false);
+                run(
+                  () => api(`/service-accounts/${account.id}/provision`, { method: "POST" }),
+                  `Provisioned ${account.name}`,
+                );
+              }}
+            >
+              Provision
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function NewRequestDialog({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [type, setType] = useState<(typeof TYPES)[number]>("qa");
+  const [type, setType] = useState<"qa" | "m2m" | "automation">("qa");
   const [owner, setOwner] = useState("");
   const [groups, setGroups] = useState("");
   const [justification, setJustification] = useState("");
@@ -209,85 +533,99 @@ function NewRequestForm({ onDone, onError }: { onDone: () => void; onError: (m: 
       await api("/service-accounts/requests", {
         method: "POST",
         body: JSON.stringify({
-          name, displayName, type, ownerMatricule: owner,
+          name,
+          displayName,
+          type,
+          ownerMatricule: owner,
           groupRefs: groups.split(",").map((g) => g.trim()).filter(Boolean),
           justification,
         }),
       });
-      setName(""); setDisplayName(""); setOwner(""); setGroups(""); setJustification("");
+      toast.success(`Request filed for ${name}`);
+      setOpen(false);
+      setName("");
+      setDisplayName("");
+      setOwner("");
+      setGroups("");
+      setJustification("");
       onDone();
-    } catch (e) { onError((e as Error).message); }
-    finally { setBusy(false); }
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <section style={card}>
-      <h2 style={h2}>File a request</h2>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <input style={input} placeholder="name (ktayl-qa-finance)" value={name} onChange={(e) => setName(e.target.value)} />
-        <input style={input} placeholder="display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-        <select style={input} value={type} onChange={(e) => setType(e.target.value as (typeof TYPES)[number])}>
-          {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <input style={input} placeholder="owner matricule (100001)" value={owner} onChange={(e) => setOwner(e.target.value)} />
-        <input style={input} placeholder="groups (comma-sep, e.g. GROUP_Finance)" value={groups} onChange={(e) => setGroups(e.target.value)} />
-      </div>
-      <textarea style={{ ...input, minHeight: 54, width: "100%", flex: "unset" }} placeholder="justification (mandatory audit reason)" value={justification} onChange={(e) => setJustification(e.target.value)} />
-      <button style={btn} disabled={busy} onClick={submit}>{busy ? "Filing…" : "File request"}</button>
-    </section>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="brand" size="sm">
+          <Plus className="size-4" /> Request service account
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Request a service account</DialogTitle>
+          <DialogDescription>
+            Dual-approved (Security + owner) before anything is provisioned. The justification is a
+            mandatory audit reason.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="sa-name">Name</Label>
+            <Input id="sa-name" placeholder="ktayl-qa-finance" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="sa-display">Display name</Label>
+            <Input id="sa-display" placeholder="ktayl QA Finance" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Type</Label>
+              <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="qa">qa</SelectItem>
+                  <SelectItem value="m2m">m2m</SelectItem>
+                  <SelectItem value="automation">automation</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="sa-owner">Owner matricule</Label>
+              <Input id="sa-owner" placeholder="100006" value={owner} onChange={(e) => setOwner(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="sa-groups">Groups (comma-separated)</Label>
+            <Input id="sa-groups" placeholder="GROUP_Finance" value={groups} onChange={(e) => setGroups(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="sa-just">Justification</Label>
+            <Input id="sa-just" placeholder="Why is this non-human identity needed?" value={justification} onChange={(e) => setJustification(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="brand" disabled={busy} onClick={submit}>
+            {busy ? "Filing…" : "File request"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function DecideBar({ onApprove, onDeny }: { onApprove: (a: string) => void; onDeny: (a: string, c: string) => void }) {
-  const [approver, setApprover] = useState("");
-  const [comment, setComment] = useState("");
+function EmptyState({ icon: Icon, line }: { icon: typeof Bot; line: string }) {
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
-      <input style={{ ...input, flex: "0 0 150px" }} placeholder="your matricule" value={approver} onChange={(e) => setApprover(e.target.value)} />
-      <input style={{ ...input, flex: "1 1 160px" }} placeholder="comment (deny)" value={comment} onChange={(e) => setComment(e.target.value)} />
-      <button style={smallBtn} onClick={() => onApprove(approver)}>Approve leg</button>
-      <button style={smallBtnDeny} onClick={() => onDeny(approver, comment)}>Deny</button>
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed py-12 text-center">
+      <Icon className="size-7 text-muted-foreground" />
+      <p className="text-sm text-muted-foreground">{line}</p>
     </div>
   );
 }
-
-function Leg({ label, approver, decision }: { label: string; approver: string | null; decision: Decision }) {
-  const color = decision?.decision === "approved" ? "#0a6" : decision?.decision === "denied" ? "#a11" : "#8a97a0";
-  return (
-    <div style={{ fontSize: 13 }}>
-      <span style={{ color: "#6b7a84" }}>{label}:</span>{" "}
-      <strong style={{ color: NAVY }}>{approver ?? "—"}</strong>{" "}
-      <span style={{ color, fontWeight: 700 }}>{decision ? decision.decision : "pending"}</span>
-    </div>
-  );
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main style={{ minHeight: "100dvh", background: "#f6f8fa", padding: "40px 20px" }}>
-      <div style={{ maxWidth: 880, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/ktayl-logo.svg" alt="ktayl-solution" width={180} height={40} />
-        {children}
-      </div>
-    </main>
-  );
-}
-function Card({ children }: { children: React.ReactNode }) {
-  return <div style={{ ...card, display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>{children}</div>;
-}
-function statusPill(s: string): React.CSSProperties {
-  const c = s === "active" || s === "approved" ? "#0a6" : s === "denied" || s === "disabled" ? "#a11" : "#468";
-  return { fontSize: 12, fontWeight: 700, color: c, border: `1px solid ${c}`, borderRadius: 999, padding: "1px 8px", textTransform: "uppercase" };
-}
-
-const card: React.CSSProperties = { background: "#fff", border: "1px solid #e3e9ee", borderRadius: 12, padding: 18, width: "100%", boxSizing: "border-box" };
-const h2: React.CSSProperties = { fontSize: 18, fontWeight: 700, color: NAVY, margin: "0 0 8px" };
-const muted: React.CSSProperties = { color: "#6b7a84", fontSize: 13 };
-const input: React.CSSProperties = { padding: "8px 10px", border: "1px solid #cdd7de", borderRadius: 8, fontSize: 14, flex: "1 1 160px" };
-const btn: React.CSSProperties = { marginTop: 10, background: ORANGE, color: "#fff", border: 0, borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-block" };
-const smallBtn: React.CSSProperties = { background: "#0a6", color: "#fff", border: 0, borderRadius: 7, padding: "5px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginRight: 6 };
-const smallBtnDeny: React.CSSProperties = { ...smallBtn, background: "#a11" };
-const smallBtnGhost: React.CSSProperties = { ...smallBtn, background: "#fff", color: NAVY, border: `1px solid ${NAVY}` };
-const th: React.CSSProperties = { padding: "4px 6px", fontWeight: 600 };
-const td: React.CSSProperties = { padding: "6px 6px", color: "#2b3942", verticalAlign: "top" };
