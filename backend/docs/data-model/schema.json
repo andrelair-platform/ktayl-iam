@@ -385,6 +385,119 @@
       ]
     },
     {
+      "name": "public.external_collaborator_request",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "collaborator_id",
+          "type": "uuid",
+          "nullable": false
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "requester_id",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "security_approver",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "security_decision",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "sponsor_approver",
+          "type": "varchar(32)",
+          "nullable": true
+        },
+        {
+          "name": "sponsor_decision",
+          "type": "jsonb",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": "varchar(20)",
+          "nullable": false,
+          "default": "'pending'::character varying"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "external_collaborator_request_pkey",
+          "def": "CREATE UNIQUE INDEX external_collaborator_request_pkey ON public.external_collaborator_request USING btree (id)",
+          "table": "public.external_collaborator_request",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "ix_ec_request_collaborator",
+          "def": "CREATE INDEX ix_ec_request_collaborator ON public.external_collaborator_request USING btree (collaborator_id)",
+          "table": "public.external_collaborator_request",
+          "columns": [
+            "collaborator_id"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "external_collaborator_request_collaborator_id_fkey",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (collaborator_id) REFERENCES external_collaborator(id) ON DELETE CASCADE",
+          "table": "public.external_collaborator_request",
+          "referenced_table": "public.external_collaborator",
+          "columns": [
+            "collaborator_id"
+          ],
+          "referenced_columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "external_collaborator_request_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.external_collaborator_request",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "external_collaborator_request_status_check",
+          "type": "CHECK",
+          "def": "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'denied'::character varying, 'cancelled'::character varying])::text[])))",
+          "table": "public.external_collaborator_request",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        }
+      ]
+    },
+    {
       "name": "public.identity",
       "type": "BASE TABLE",
       "columns": [
@@ -956,6 +1069,19 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE"
+    },
+    {
+      "table": "public.external_collaborator_request",
+      "columns": [
+        "collaborator_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "public.external_collaborator",
+      "parent_columns": [
+        "id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (collaborator_id) REFERENCES external_collaborator(id) ON DELETE CASCADE"
     },
     {
       "table": "public.request",

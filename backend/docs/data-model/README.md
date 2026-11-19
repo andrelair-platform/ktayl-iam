@@ -2,17 +2,18 @@
 
 ## Tables
 
-| Name                                                                | Columns | Comment | Type       |
-| ------------------------------------------------------------------- | ------- | ------- | ---------- |
-| [public.application](public.application.md)                         | 7       |         | BASE TABLE |
-| [public.assignment](public.assignment.md)                           | 10      |         | BASE TABLE |
-| [public.audit_log](public.audit_log.md)                             | 7       |         | BASE TABLE |
-| [public.external_collaborator](public.external_collaborator.md)     | 14      |         | BASE TABLE |
-| [public.identity](public.identity.md)                               | 16      |         | BASE TABLE |
-| [public.request](public.request.md)                                 | 10      |         | BASE TABLE |
-| [public.role](public.role.md)                                       | 8       |         | BASE TABLE |
-| [public.service_account](public.service_account.md)                 | 12      |         | BASE TABLE |
-| [public.service_account_request](public.service_account_request.md) | 11      |         | BASE TABLE |
+| Name                                                                            | Columns | Comment | Type       |
+| ------------------------------------------------------------------------------- | ------- | ------- | ---------- |
+| [public.application](public.application.md)                                     | 7       |         | BASE TABLE |
+| [public.assignment](public.assignment.md)                                       | 10      |         | BASE TABLE |
+| [public.audit_log](public.audit_log.md)                                         | 7       |         | BASE TABLE |
+| [public.external_collaborator](public.external_collaborator.md)                 | 14      |         | BASE TABLE |
+| [public.external_collaborator_request](public.external_collaborator_request.md) | 10      |         | BASE TABLE |
+| [public.identity](public.identity.md)                                           | 16      |         | BASE TABLE |
+| [public.request](public.request.md)                                             | 10      |         | BASE TABLE |
+| [public.role](public.role.md)                                                   | 8       |         | BASE TABLE |
+| [public.service_account](public.service_account.md)                             | 12      |         | BASE TABLE |
+| [public.service_account_request](public.service_account_request.md)             | 11      |         | BASE TABLE |
 
 ## Relations
 
@@ -20,6 +21,7 @@
 erDiagram
 
 "public.assignment" }o--|| "public.role" : "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE"
+"public.external_collaborator_request" }o--|| "public.external_collaborator" : "FOREIGN KEY (collaborator_id) REFERENCES external_collaborator(id) ON DELETE CASCADE"
 "public.request" }o--|| "public.role" : "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE"
 "public.role" }o--|| "public.application" : "FOREIGN KEY (application_id) REFERENCES application(id) ON DELETE CASCADE"
 "public.service_account_request" }o--|| "public.service_account" : "FOREIGN KEY (service_account_id) REFERENCES service_account(id) ON DELETE CASCADE"
@@ -69,6 +71,18 @@ erDiagram
   varchar_32_ sponsor_matricule
   varchar_16_ status
   varchar_20_ type
+}
+"public.external_collaborator_request" {
+  uuid collaborator_id FK
+  timestamp_with_time_zone created_at
+  uuid id
+  varchar_32_ requester_id
+  varchar_32_ security_approver
+  jsonb security_decision
+  varchar_32_ sponsor_approver
+  jsonb sponsor_decision
+  varchar_20_ status
+  timestamp_with_time_zone updated_at
 }
 "public.identity" {
   boolean authentik_provisioned

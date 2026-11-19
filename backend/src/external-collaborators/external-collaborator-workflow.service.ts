@@ -1,0 +1,211 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import type { AppConfig } from '../config/configuration.js';
+import { AuditService } from '../catalog/audit.service.js';
+import { AuthentikClient } from '../directory/authentik.client.js';
+import { resolveApprovers } from '../workflow/approver-resolution.js';
+import {
+  ExternalCollaboratorRequest,
+  type EcApprovalDecision,
+} from './entities/external-collaborator-request.entity.js';
+import {
+  ExternalCollaboratorService,
+  type CreateExternalCollaboratorInput,
+} from './external-collaborator.service.js';
+
+export type EcLeg = 'security' | 'sponsor';
+
+/** Hard ceiling on an engagement length (days) — the max any external access may be granted for. */
+export const EXPIRY_CEILING_DAYS = 180;
+export const EXPIRY_DEFAULT_DAYS = 90;
+
+export interface FileExternalCollaboratorInput
+  extends Omit<CreateExternalCollaboratorInput, 'createdBy' | 'expiresAt'> {
+  expiryDays?: number;
+}
+
+/**
+ * The governed external-collaborator request + **Sponsor + Security** dual-approval (IGA-07 / S026).
+ * Reuses the pure four-eyes resolver (`resolveApprovers`) — "owner" leg → the **sponsor**, "manager"
+ * leg → a **Security/Platform approver**. Enforces the governance rules at request time: a **mandatory
+ * purpose**, the **sponsor must be an ACTIVE employee** (rejected otherwise), and the **expiry is capped
+ * at the hard ceiling** (default 90d, max 180d). Nothing reaches Authentik here — both approvals leave
+ * the request `approved` (the collaborator stays `requested`) and S027 provisions it.
+ */
+@Injectable()
+export class ExternalCollaboratorWorkflowService {
+  private readonly log = new Logger(ExternalCollaboratorWorkflowService.name);
+  private readonly securityApprover: string;
+  private readonly backupApprover: string;
+
+  constructor(
+    @InjectRepository(ExternalCollaboratorRequest)
+    private readonly requests: Repository<ExternalCollaboratorRequest>,
+    private readonly collaborators: ExternalCollaboratorService,
+    private readonly authentik: AuthentikClient,
+    private readonly audit: AuditService,
+    config: ConfigService,
+  ) {
+    const dir = config.get<AppConfig['directory']>('directory')!;
+    this.securityApprover = dir.securityApprover;
+    this.backupApprover = dir.fallbackApprover;
+  }
+
+  /** File an onboarding request: validate sponsor+purpose+expiry, create the collaborator, resolve legs. */
+  async fileRequest(
+    input: FileExternalCollaboratorInput,
+    actor: string,
+  ): Promise<ExternalCollaboratorRequest> {
+    if (!input.purpose || !input.purpose.trim()) {
+      throw new UnprocessableEntityException('an external-collaborator request requires a purpose');
+    }
+    // Sponsor must be an ACTIVE employee. When Authentik is configured we validate it live; a
+    // terminated/unknown sponsor is rejected (the orphaned-access guard starts at request time).
+    if (this.authentik.configured && !(await this.authentik.isActiveUser(input.sponsorMatricule))) {
+      throw new UnprocessableEntityException(
+        `sponsor ${input.sponsorMatricule} is not an active employee`,
+      );
+    }
+
+    const days = Math.min(input.expiryDays ?? EXPIRY_DEFAULT_DAYS, EXPIRY_CEILING_DAYS);
+    const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    const collaborator = await this.collaborators.create({ ...input, expiresAt, createdBy: actor });
+
+    // "owner" leg → the sponsor; "manager" leg → the Security approver.
+    const resolution = resolveApprovers({
+      requesterId: actor,
+      managerFromHr: this.securityApprover,
+      roleOwner: input.sponsorMatricule,
+      backup: this.backupApprover,
+    });
+
+    const req = await this.requests.save(
+      this.requests.create({
+        requesterId: actor,
+        collaboratorId: collaborator.id,
+        sponsorApprover: resolution.ownerApprover,
+        securityApprover: resolution.managerApprover,
+        status: 'pending',
+        sponsorDecision: null,
+        securityDecision: null,
+      }),
+    );
+
+    await this.audit.record(
+      actor,
+      'external_collaborator.requested',
+      'external_collaborator_request',
+      req.id,
+      {
+        collaborator: collaborator.name,
+        sponsor: input.sponsorMatricule,
+        groups: input.groupRefs,
+        expiresAt: expiresAt.toISOString(),
+        sponsorApprover: resolution.ownerApprover,
+        securityApprover: resolution.managerApprover,
+        purpose: collaborator.purpose,
+        reassignments: resolution.notes,
+        needsManualReview: resolution.needsManualReview,
+      },
+    );
+    return req;
+  }
+
+  /** Record an approver's decision on their leg. Either denial rejects; both-approved → `approved`. */
+  async decide(
+    requestId: string,
+    approver: string,
+    decision: 'approved' | 'denied',
+    comment: string | undefined,
+    actor: string,
+  ): Promise<ExternalCollaboratorRequest> {
+    const req = await this.requests.findOne({ where: { id: requestId } });
+    if (!req) {
+      throw new NotFoundException(`external-collaborator request ${requestId} not found`);
+    }
+    if (req.status !== 'pending') {
+      throw new ConflictException(`request is already ${req.status} and cannot be decided again`);
+    }
+    if (approver === req.requesterId) {
+      throw new ForbiddenException('no self-approval: the requester cannot approve their own request');
+    }
+
+    const legs: EcLeg[] = [];
+    if (approver === req.securityApprover && !req.securityDecision) legs.push('security');
+    if (approver === req.sponsorApprover && !req.sponsorDecision) legs.push('sponsor');
+    if (legs.length === 0) {
+      throw new ForbiddenException(
+        'you are not an assigned approver for this request, or your leg is already decided',
+      );
+    }
+
+    const entry: EcApprovalDecision = {
+      approver,
+      decision,
+      at: new Date().toISOString(),
+      ...(comment ? { comment } : {}),
+    };
+    for (const leg of legs) {
+      if (leg === 'security') req.securityDecision = entry;
+      else req.sponsorDecision = entry;
+      await this.audit.record(
+        actor,
+        `external_collaborator.${leg}_${decision}`,
+        'external_collaborator_request',
+        req.id,
+        { approver, leg, decision, comment: comment ?? null },
+      );
+    }
+
+    if (decision === 'denied') {
+      req.status = 'denied';
+      await this.requests.save(req);
+      await this.audit.record(
+        actor,
+        'external_collaborator.denied',
+        'external_collaborator_request',
+        req.id,
+        { by: approver, legs },
+      );
+      return req;
+    }
+
+    const bothApproved =
+      req.securityDecision?.decision === 'approved' && req.sponsorDecision?.decision === 'approved';
+    if (!bothApproved) {
+      await this.requests.save(req); // one leg in; still pending the other
+      return req;
+    }
+
+    req.status = 'approved';
+    await this.requests.save(req);
+    await this.audit.record(
+      actor,
+      'external_collaborator.approved',
+      'external_collaborator_request',
+      req.id,
+      { collaboratorId: req.collaboratorId },
+    );
+    // Provisioning to Authentik is S027 (picks up approved requests whose collaborator is `requested`).
+    this.log.log(`external-collaborator request ${req.id} approved — awaiting provisioning (S027)`);
+    return req;
+  }
+
+  findById(id: string): Promise<ExternalCollaboratorRequest | null> {
+    return this.requests.findOne({ where: { id } });
+  }
+
+  list(): Promise<ExternalCollaboratorRequest[]> {
+    return this.requests.find({ order: { createdAt: 'DESC' } });
+  }
+}

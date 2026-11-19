@@ -1,0 +1,72 @@
+# public.external_collaborator_request
+
+## Columns
+
+| Name              | Type                     | Default                      | Nullable | Children | Parents                                                         | Comment |
+| ----------------- | ------------------------ | ---------------------------- | -------- | -------- | --------------------------------------------------------------- | ------- |
+| collaborator_id   | uuid                     |                              | false    |          | [public.external_collaborator](public.external_collaborator.md) |         |
+| created_at        | timestamp with time zone | now()                        | false    |          |                                                                 |         |
+| id                | uuid                     | gen_random_uuid()            | false    |          |                                                                 |         |
+| requester_id      | varchar(32)              |                              | false    |          |                                                                 |         |
+| security_approver | varchar(32)              |                              | true     |          |                                                                 |         |
+| security_decision | jsonb                    |                              | true     |          |                                                                 |         |
+| sponsor_approver  | varchar(32)              |                              | true     |          |                                                                 |         |
+| sponsor_decision  | jsonb                    |                              | true     |          |                                                                 |         |
+| status            | varchar(20)              | 'pending'::character varying | false    |          |                                                                 |         |
+| updated_at        | timestamp with time zone | now()                        | false    |          |                                                                 |         |
+
+## Constraints
+
+| Name                                               | Type        | Definition                                                                                                                                                                 |
+| -------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| external_collaborator_request_collaborator_id_fkey | FOREIGN KEY | FOREIGN KEY (collaborator_id) REFERENCES external_collaborator(id) ON DELETE CASCADE                                                                                       |
+| external_collaborator_request_pkey                 | PRIMARY KEY | PRIMARY KEY (id)                                                                                                                                                           |
+| external_collaborator_request_status_check         | CHECK       | CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'denied'::character varying, 'cancelled'::character varying])::text[]))) |
+
+## Indexes
+
+| Name                               | Definition                                                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| external_collaborator_request_pkey | CREATE UNIQUE INDEX external_collaborator_request_pkey ON public.external_collaborator_request USING btree (id) |
+| ix_ec_request_collaborator         | CREATE INDEX ix_ec_request_collaborator ON public.external_collaborator_request USING btree (collaborator_id)   |
+
+## Relations
+
+```mermaid
+erDiagram
+
+"public.external_collaborator_request" }o--|| "public.external_collaborator" : "FOREIGN KEY (collaborator_id) REFERENCES external_collaborator(id) ON DELETE CASCADE"
+
+"public.external_collaborator_request" {
+  uuid collaborator_id FK
+  timestamp_with_time_zone created_at
+  uuid id
+  varchar_32_ requester_id
+  varchar_32_ security_approver
+  jsonb security_decision
+  varchar_32_ sponsor_approver
+  jsonb sponsor_decision
+  varchar_20_ status
+  timestamp_with_time_zone updated_at
+}
+"public.external_collaborator" {
+  varchar_160_ authentik_username
+  timestamp_with_time_zone created_at
+  varchar_32_ created_by
+  varchar_200_ display_name
+  varchar_200_ email
+  timestamp_with_time_zone expires_at
+  text__ group_refs
+  uuid id
+  timestamp_with_time_zone last_recertified_at
+  varchar_120_ name
+  text purpose
+  varchar_32_ sponsor_matricule
+  varchar_16_ status
+  varchar_20_ type
+}
+```
+
+---
+
+> Generated by [tbls](https://github.com/k1LoW/tbls)
