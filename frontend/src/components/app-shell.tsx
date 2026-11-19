@@ -15,6 +15,7 @@ import {
   LogOut,
   ScrollText,
   ShieldCheck,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { useMe, type Me } from "@/hooks/use-me";
@@ -50,6 +51,7 @@ const ADMIN: NavItem[] = [
   { href: "/admin/requests", label: "Access requests", icon: Inbox, cap: "requests:reassign" },
   { href: "/admin", label: "Catalog", icon: Boxes, cap: "catalog:manage" },
   { href: "/admin/service-accounts", label: "Service accounts", icon: Bot, cap: "service_accounts:manage" },
+  { href: "/admin/external-collaborators", label: "External collaborators", icon: UserPlus, cap: "collaborators:manage" },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText, cap: "audit:read:all" },
 ];
 
