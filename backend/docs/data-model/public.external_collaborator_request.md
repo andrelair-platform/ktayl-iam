@@ -64,6 +64,7 @@ erDiagram
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
+  varchar_120_ supplier_ref
   varchar_20_ type
 }
 ```

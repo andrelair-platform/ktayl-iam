@@ -38,6 +38,16 @@ export class CreateExternalCollaboratorRequestDto {
   @MaxLength(200)
   company?: string;
 
+  /**
+   * Pay-link (ADR-010): the finance/procurement **Supplier** (or contract) reference a **paid** contractor is
+   * paid against (ERPNext Buying / Procurement #31). Read-only here — IAM stores + surfaces it, never creates
+   * the finance record. Optional: prompted + soft-flagged for paid types, legitimately blank for an unpaid party.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  supplierRef?: string;
+
   /** The accountable internal **sponsor** (matricule) — validated as an ACTIVE employee server-side. */
   @IsString()
   @Matches(/^\d{6}$/, { message: 'sponsorMatricule must be a 6-digit matricule' })

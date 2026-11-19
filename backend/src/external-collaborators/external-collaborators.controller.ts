@@ -43,6 +43,7 @@ export class ExternalCollaboratorsController {
         email: dto.email,
         type: dto.type,
         company: dto.company,
+        supplierRef: dto.supplierRef,
         sponsorMatricule: dto.sponsorMatricule,
         groupRefs: dto.groupRefs,
         purpose: dto.purpose,

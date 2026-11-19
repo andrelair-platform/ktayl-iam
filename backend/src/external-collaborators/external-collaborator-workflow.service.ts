@@ -114,6 +114,7 @@ export class ExternalCollaboratorWorkflowService {
       {
         collaborator: collaborator.name,
         company: collaborator.company ?? 'freelance',
+        supplierRef: collaborator.supplierRef ?? null,
         sponsor: input.sponsorMatricule,
         groups: input.groupRefs,
         expiresAt: expiresAt.toISOString(),

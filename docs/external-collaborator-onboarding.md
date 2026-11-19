@@ -24,6 +24,7 @@ back to ERPNext** — an external collaborator is an **IAM-only identity with no
 | `name` / `displayName` | the Authentik username to provision + the human-readable name |
 | `email` | contact / invite target |
 | `company` *(nullable)* | the **contractor firm** the external party belongs to — **`null` = freelance** (no firm) |
+| `supplierRef` *(nullable)* | **pay-link (ADR-010)** — a READ-ONLY reference to the finance/procurement **Supplier** (or contract) record a **paid** contractor is paid against (ERPNext Buying / Procurement #31). IAM stores + surfaces it, **never writes** the finance record. `null` = unlinked (soft-flagged for paid types) |
 | `sponsorMatricule` | the accountable internal **employee = the manager who requests + owns the collaborator** (the collaborator is *attached* to them) — **validated as ACTIVE in ERPNext** (not terminated/unknown) |
 | `purpose` (text) | mandatory justification (audit reason) |
 | `groupRefs` (text[]) | the **scoped** entitlement — specific `GROUP_<x>`, never birthright-plus |
@@ -62,6 +63,33 @@ data is `company`.
 *Rationale:* keeps the identity record honest about *who the external party is and where they're from*
 (firm vs freelance) for audit/DORA third-party context, without inventing a second owner relationship or
 making company a hard requirement that blocks a legitimate freelance engagement.
+
+### Enhancement decision — pay-link to the finance Supplier record (ADR-010, built 2026-11-19)
+**The request (owner):** *"when creating an external user of the IAM platform, does it also go to the RH
+system, because they need to be paid? A service/technical account does not need to go to the RH system."*
+
+**The answer + decision (see [ADR-010](./architecture/adr/000-index.md#adr-010)).** A **paid contractor is
+NOT an HR Employee** (no payroll, no HR Joiner lifecycle) — they are a **Supplier/vendor paid via Accounts
+Payable / Buying** (ERPNext Buying + the **Procurement & Contract Management** domain, board #31). A
+**service/technical account is non-human and never paid** → correctly no finance record. IAM stays
+**access-only** and, per ADR-009, **never writes back to ERPNext**. So we **link, not write**:
+- **Added a nullable `supplierRef`** on `external_collaborator` = the ERPNext **Supplier ID** (or procurement
+  **contract** ref) — the read-only link *access identity → paid-contractor record*. IAM **references it,
+  never creates it**. Captured in the request, shown on the collaborator, recorded in the audit.
+- **Soft-gate by engagement type (not a hard block):** the **paid** types (`contractor`/`broker`/`partner`)
+  **prompt** for the pay-link and the console **flags "⚠ no payment record"** when it's absent; an **unpaid**
+  party (e.g. a regulator-appointed `auditor`) may legitimately omit it. Access governance must not be held
+  hostage to a finance step — the gap is **visible + audited**, not silent, and not blocking.
+- **Handshake is phased:** *now* — procurement creates the Supplier (its system of record) → IT/manager enters
+  the `supplierRef`; IAM stores + surfaces it. *Later (domain #31)* — live-validate the ref against ERPNext
+  (read-only) and/or emit an "external-collaborator onboarded" event procurement consumes to open a Supplier/
+  contract. **IAM never writes the finance record** (ADR-009 holds).
+- **Migration is additive + back-compatible** (`ADD COLUMN supplier_ref` nullable → existing rows unlinked).
+
+*Rejected:* IAM creating the ERPNext Supplier (couples IAM to finance, breaks the ADR-009 boundary); no link
+at all (leaves paid access untraceable to the payment record); treating the contractor as an HR Employee
+(wrong lifecycle). *Build:* entity + migration `1727001500000` + DTO/service/controller/workflow + audit +
+UI field & paid-type flag.
 
 ## Lifecycle
 ```

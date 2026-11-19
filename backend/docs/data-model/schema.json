@@ -333,6 +333,11 @@
           "default": "'requested'::character varying"
         },
         {
+          "name": "supplier_ref",
+          "type": "varchar(120)",
+          "nullable": true
+        },
+        {
           "name": "type",
           "type": "varchar(20)",
           "nullable": false

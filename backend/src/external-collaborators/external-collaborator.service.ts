@@ -16,6 +16,8 @@ export interface CreateExternalCollaboratorInput {
   type: ExternalCollaboratorType;
   /** The contractor firm; null/omitted = freelance. */
   company?: string | null;
+  /** Pay-link (ADR-010): read-only ERPNext Supplier / procurement contract ref a paid contractor is paid against. */
+  supplierRef?: string | null;
   sponsorMatricule: string;
   purpose: string;
   groupRefs: string[];
@@ -49,6 +51,7 @@ export class ExternalCollaboratorService {
         email: input.email,
         type: input.type,
         company: input.company?.trim() || null,
+        supplierRef: input.supplierRef?.trim() || null,
         sponsorMatricule: input.sponsorMatricule,
         purpose: input.purpose,
         groupRefs: input.groupRefs,
@@ -66,6 +69,7 @@ export class ExternalCollaboratorService {
         name: c.name,
         type: c.type,
         company: c.company ?? 'freelance',
+        supplierRef: c.supplierRef ?? null,
         sponsor: c.sponsorMatricule,
         groups: c.groupRefs,
         expiresAt: c.expiresAt?.toISOString() ?? null,
