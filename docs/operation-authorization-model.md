@@ -49,8 +49,12 @@ reports' requests here — those are console operations, gated below.
 | Create a **service account** (non-human) | — | — | ✅ | `@AdminOnly` (IGA-06) + four-eyes to provision |
 | Onboard an **external collaborator** (human non-employee) | — | — | ✅ | `@AdminOnly` + sponsor + expiry (see below) |
 | Provision / disable an identity | — | — | ✅ | `@AdminOnly` |
-| Run Authentik reconciliation | — | — | ✅ | `@AdminOnly` |
-| View the **full** audit log / exports | ◐ own actions | — | ✅ full | `@AdminOnly` for the full log |
+| Run Authentik reconciliation | — | — | ✅ | `reconcile:run` |
+| **Reassign / override a stuck approval leg** (reason required) | — | — | ✅ | `requests:reassign` + audited reason |
+| View the **full** audit log / exports | ◐ own actions | — | ✅ full | `audit:read:all` (self → `audit:read:self`) |
+
+> **Gate column = the capability the operation maps to** (see *Enforcement* below). "`@AdminOnly`" is the
+> current mechanism; it becomes `@RequireCapability(<name>)` so the role→capability map is the one edit point.
 
 ◐ notes: *Decide* — only on legs where the user is the named manager/owner (the UI shows the decide
 controls only then). *Recertify* — the account/grant **owner** or an admin. *Audit* — an employee sees their
@@ -68,6 +72,9 @@ This is the decisive scope line (and a frequent misunderstanding):
   truth for the workforce.
 - What the console **does** with HR data: read the **matricule** (= Authentik username) and the **manager
   hierarchy** (to route manager approval). Read-only, consumer side.
+- **One-directional — the console never writes back to ERPNext.** It consumes HR (JML events, sponsor
+  validity, manager hierarchy) and never creates/edits an HR record. In particular, **external collaborators
+  are IAM-only identities that never trigger or write back to ERPNext** (they have no workforce record).
 
 ```
  HR system (ERPNext) ──JML events──▶ IAM platform ──provision──▶ Authentik (runtime enforcement)
@@ -84,35 +91,58 @@ They are **not in the HR system** (not on payroll), so they **cannot** arrive vi
 ordinary employee must **not** be able to mint one. The console is therefore the right home, under **IT/Admin**
 governance, shaped like the service-account control but for a human:
 
-- **Who may create one:** IT/Admin only (`@AdminOnly`).
-- **Mandatory governance fields:** an accountable internal **sponsor** (an employee matricule), a **purpose/
-  justification**, a **time-box (expiry)** after which access auto-lapses, and a **scoped entitlement** (the
-  specific group(s)/app(s) — never birthright-plus).
-- **Lifecycle:** request → (optional four-eyes: sponsor + Security) → provision a scoped Authentik account →
-  **recertify before expiry** or **auto-disable**. Fully audited, same as service accounts.
-- **Not** an HR operation, **not** employee self-service. *(Build status: designed here; not yet
-  implemented — tracked as a follow-up epic on board #17.)*
+- **Who may create one:** IT/Admin only (`collaborators:manage`).
+- **The sponsor is an active internal employee, synced from ERPNext.** The accountable sponsor **must** be a
+  current employee (validated live against the HR directory) — a terminated/unknown matricule **cannot** be
+  assigned as sponsor. The sponsor is the human on the hook for the collaborator's access.
+- **Approval = Sponsor + Security (four-eyes)** for anything beyond read-only, and for any production /
+  sensitive scope (Decision #2). The business sponsor wants the work unblocked and may over-provision;
+  **Security is the guardrail on scope + expiry duration.**
+- **Mandatory governance fields:** sponsor (`name · matricule`), **purpose/justification**, a **scoped
+  entitlement** (specific group(s)/app(s) — never birthright-plus), and an **expiry with a hard ceiling**
+  (default ~90 days, max ~180) requiring **explicit renewal** before it — no indefinite access.
+- **Lifecycle:** request → Sponsor + Security approval → provision a **scoped** Authentik account →
+  **renew/recertify before expiry** → else **auto-suspend**. Fully audited, same shape as service accounts.
+- **Sponsor-Leaver safety net:** if the sponsor triggers an **ERPNext Leaver event**, all their active
+  external collaborators are **automatically flagged for reassignment or suspended** — closing the classic
+  orphaned-access vector (collaborators bypass the HR JML lifecycle, so this is their equivalent safeguard).
+- **One-directional — never writes back to HR.** An external collaborator is an **IAM-only identity**; it
+  **never triggers or writes back to ERPNext** and has **no HR/workforce record**. IAM *consumes* ERPNext
+  (sponsor validity, Leaver events); it never creates HR data. (See *The HR boundary*.)
+- **Not** an HR operation, **not** employee self-service. *(Build status: designed here; backend not yet
+  implemented — follow-up epic on board #17.)*
 
-## Technical enforcement — today vs target
-- **Today (admin-first v1):** a binary split — `AuthenticatedGuard` (any user) + `@AdminOnly` (the
-  `isAdmin`/`Platform Admins` gate), with finer rules (self-only requests, approver-is-an-assigned-leg) in
-  the **workflow layer**. This already implements most of the matrix: employee self-service = open routes;
-  every privileged op = `@AdminOnly`.
-- **Target refinement (incremental, non-breaking):**
-  1. Keep `@AdminOnly` as the privileged gate, but **name the persona in the UI** (role-aware nav + hide
-     actions a user can't perform — see the frontend doc) rather than letting users hit a 403.
-  2. Consider splitting a dedicated **`IT Operator`** capability from full **`Admin`** later (e.g. IT can
-     onboard external collaborators + service accounts but not edit the governance config) — **only if** a
-     real separation-of-duty need appears (need-first; today one `isAdmin` tier is proportionate).
-  3. The **employee self-service** surface (request/track/approve) becomes first-class in the UI (the PRD's
-     deferred self-service portal), not an afterthought on the admin console.
+## Enforcement — capability flags, not a raw `isAdmin` boolean (DECIDED 2026-11-19)
+**One `Admin` tier is active now, but the console checks a *capability*, never a bare `isAdmin` scattered
+across routes and UI.** This keeps a future split (an `IT Operator` who onboards collaborators + service
+accounts but can't edit governance config) a **config change**, not a codebase refactor.
 
-## Open decisions (resolve before/with implementation)
-- **IT vs Admin split** — one `isAdmin` tier now, or introduce `IT Operator` immediately? *(Recommend: one
-  tier now; split when a real SoD need appears.)*
-- **External-collaborator four-eyes** — sponsor-approval only, or sponsor **+** Security (like service
-  accounts)? *(Recommend: sponsor + Security for anything beyond read-only.)*
-- **Delegated approval** — may a manager delegate their approver legs while away? *(Defer; note as future.)*
+- **Capabilities (the permission strings the code checks):**
+  `requests:create` · `requests:decide` (own legs) · `requests:reassign` (admin override of a stuck leg) ·
+  `recert:own` · `catalog:read` · `catalog:manage` · `service_accounts:manage` · `collaborators:manage` ·
+  `provisioning:manage` · `reconcile:run` · `audit:read:self` · `audit:read:all` · `governance:edit`.
+- **Role → capability map (today — the single source of truth):**
+  **Employee** = `requests:create`, `requests:decide` *(contextual)*, `recert:own`, `catalog:read`,
+  `audit:read:self`. **Admin** = **all** capabilities. An **`IT Operator`** role is **reserved in the model**
+  (= the Admin set **minus** `governance:edit`) but **not active** — activating it later is assigning that
+  subset (a config change), nothing more.
+- **How it's gated:** the existing `AuthenticatedGuard` + `@AdminOnly` *mechanism* stays, but `@AdminOnly`
+  becomes **`@RequireCapability('service_accounts:manage')`** etc. — one decorator resolving the
+  role→capability map in **one place**. The **UI** gates identically: a `can('collaborators:manage')` helper
+  hides actions a user lacks, so **no one ever meets a 403**. Finer per-record rules (self-only requests,
+  approver-is-an-assigned-leg) stay in the **workflow layer**.
+- The **employee self-service** surface (request / track / approve) is first-class in the UI (the PRD's
+  deferred self-service portal), not an afterthought on an admin console.
+
+## Decisions (resolved 2026-11-19)
+1. **IT vs Admin split** — **single `Admin` tier active now**, implemented via the **capability flags** above
+   (not a raw boolean), with an `IT Operator` role **reserved** so splitting it later is a config change.
+2. **External-collaborator approval** — **Sponsor + Security** (four-eyes) for anything beyond read-only, and
+   for any production / sensitive scope. Sponsor + Leaver rules are in *External collaborators* below.
+3. **Delegated approval** — **self-service delegation is deferred.** Instead an **Admin may reassign or
+   override a stuck approval leg** (`requests:reassign`) **with a mandatory reason, fully audited** — covering
+   "manager on 3 weeks PTO, urgent onboarding blocked" without a delegation engine (no chains, no mid-flight
+   revocation edge cases; the audit records who actually clicked and on whose behalf).
 
 Related: [`access-role-model.md`](./access-role-model.md), [`prd.md`](./prd.md),
 [`app-authz-bindings.md`](./app-authz-bindings.md), [`architecture/solution-architecture.md`](./architecture/solution-architecture.md),

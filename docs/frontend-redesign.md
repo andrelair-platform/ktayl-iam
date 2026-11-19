@@ -40,9 +40,11 @@ The v1 console shipped to get the capability live, not as a product surface. Obs
 - **Base components** (generated): button *(+`brand`/`success` variants)*, card, badge
   *(+`success`/`warning`/`brand`)*, table, input, label, select, dialog, tabs, dropdown-menu, skeleton,
   avatar, sonner, separator, tooltip.
-- **Shared app code:** `lib/api.ts` (one BFF client + `ApiError`), `hooks/use-me.ts` (the session principal
-  → role-aware nav), `hooks/use-directory.ts` (matricule → name map; Phase 1), `components/person-label.tsx`
-  (`name · matricule` chip; Phase 1), `components/app-shell.tsx` (sidebar + topbar).
+- **Shared app code:** `lib/api.ts` (one BFF client + `ApiError`), `hooks/use-me.ts` (the session principal),
+  `lib/capabilities.ts` + a `can(capability)` helper (resolves the role→capability map from `me` — the UI
+  gates on **capabilities, not raw `isAdmin`**, per the authz doc), `hooks/use-directory.ts` (matricule →
+  name map; Phase 1), `components/person-label.tsx` (`name · matricule` chip; Phase 1),
+  `components/app-shell.tsx` (sidebar + topbar).
 
 ## 4. Information architecture — one app shell, role-aware nav
 A persistent **app shell**: a left sidebar (filtered by persona) + a topbar (env badge, user menu, sign out).
@@ -66,8 +68,9 @@ Replaces five standalone `Shell`+logo pages.
 │ └──────────────┘  └───────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
-- **Every employee** sees the **MY ACCESS** group. The **ADMIN (IT)** group renders **only if
-  `me.isAdmin`** — matching the permission matrix (no dead links, no 403s).
+- **Every employee** sees the **MY ACCESS** group. Each **ADMIN (IT)** item renders only if the user holds
+  the matching **capability** (`can('service_accounts:manage')`, `can('collaborators:manage')`, …) — not a
+  raw `isAdmin` — so an `IT Operator` split later changes nav with no code change (no dead links, no 403s).
 - Routes (App Router, route group `(app)` with the shared shell layout; the pre-auth landing stays outside):
   `/(app)/dashboard` · `/request` · `/my/requests` · `/my/approvals` · `/admin/requests` · `/admin/catalog`
   · `/admin/service-accounts` · `/admin/external-collaborators` · `/admin/audit`. (Exact paths may keep the
@@ -112,13 +115,18 @@ lands on **My requests** with the new request's lifecycle stepper.
 
 ### 5.3 External collaborators (admin — design only, not yet built)
 Same lifecycle shape as service accounts, with the **governance fields** from the authorization model:
-sponsor (`name · matricule`), purpose, **expiry**, scoped entitlement; recertify-before-expiry or
-auto-disable. One tab list + a detail with the stepper.
+**sponsor** (an *active internal employee*, `name · matricule`, picked from the ERPNext directory — a
+terminated matricule is not selectable), **purpose**, **scoped entitlement**, and an **expiry with a hard
+ceiling** (default ~90d, max ~180d) requiring explicit renewal. Approval = **Sponsor + Security** four-eyes.
+The detail view surfaces an **expiry countdown** + a **renew** action, and a banner if the **sponsor has left**
+(ERPNext Leaver → the collaborator is flagged for reassignment/suspension). One tab list + a stepper detail.
 
 ### 5.4 The other surfaces (same system)
 - **Dashboard** — persona-aware: an employee sees *my pending requests* + *awaiting my approval*; an admin
   additionally sees *pending four-eyes*, *accounts due recert*, *recent activity*.
-- **Access requests (admin)** — the human role-request workflow, the request-card + four-eyes pattern.
+- **Access requests (admin)** — the human role-request workflow, the request-card + four-eyes pattern. A
+  **stuck leg** (approver on PTO) gets an admin **Reassign / Override** action (`requests:reassign`) behind a
+  confirm dialog that **requires a reason** (audited) — the deferred-delegation fallback, not a delegation UI.
 - **Catalog (admin)** — applications → roles table, register/edit behind admin.
 - **Audit (admin)** — searchable, exportable (CSV/JSON) activity log.
 
@@ -146,8 +154,10 @@ auto-disable. One tab list + a detail with the stepper.
 ## 8. Out of scope / follow-ups
 - The **external-collaborator backend** (entity + governed lifecycle) is a separate epic (board #17) — the UI
   (Phase 4) follows it.
-- A dedicated **IT Operator** persona (split from Admin) — only if a real SoD need appears (see the authz doc).
-- Delegated approval — deferred.
+- A dedicated **IT Operator** persona (split from Admin) — reserved in the model; activate as a config change
+  only if a real SoD need appears (see the authz doc). Building on capability flags means no UI refactor.
+- Self-service **delegated approval** — deferred; the in-scope fallback is the admin **Reassign/Override** of a
+  stuck leg (§5.4), reason-logged.
 
 Related: [`operation-authorization-model.md`](./operation-authorization-model.md), [`prd.md`](./prd.md),
 [`access-role-model.md`](./access-role-model.md), [`architecture/solution-architecture.md`](./architecture/solution-architecture.md).
