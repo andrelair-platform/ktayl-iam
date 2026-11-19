@@ -75,6 +75,23 @@ export class ServiceAccountService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
+  /**
+   * Mark an account provisioned (S023): flip to `active` and record its Authentik username + the
+   * Vault secret ref — NEVER the secret value. Persistence only; the provisioning service audits the
+   * richer `service_account.provisioned` event.
+   */
+  async markProvisioned(
+    id: string,
+    authentikUsername: string,
+    vaultSecretRef: string,
+  ): Promise<ServiceAccount> {
+    const sa = await this.getById(id);
+    sa.status = 'active';
+    sa.authentikUsername = authentikUsername;
+    sa.vaultSecretRef = vaultSecretRef;
+    return this.repo.save(sa);
+  }
+
   /** Flip lifecycle status (driven by S022/S023) + audit the transition. */
   async updateStatus(id: string, status: ServiceAccountStatus, actor: string): Promise<ServiceAccount> {
     const sa = await this.getById(id);

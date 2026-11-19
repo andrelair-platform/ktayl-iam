@@ -155,6 +155,58 @@ export class AuthentikClient {
     return Number(created.pk);
   }
 
+  /** True if provisioning a service account (create user + mint token) is possible. */
+  get canProvision(): boolean {
+    return Boolean(this.base && this.token);
+  }
+
+  /**
+   * Ensure a SERVICE-ACCOUNT user exists (IGA-06/S023) — like {@link ensureUser} but Authentik user
+   * `type: 'service_account'` (no email, no interactive SSO login; it authenticates only via its
+   * minted app-password token). Idempotent: returns the existing pk if the username is already there.
+   */
+  async ensureServiceAccount(username: string, name: string): Promise<number> {
+    const existing = await this.getUserPk(username);
+    if (existing !== null) return existing;
+    this.log.log(`creating Authentik service account "${username}"`);
+    const created = await this.send<{ pk: number }>('POST', '/core/users/', {
+      username,
+      name,
+      is_active: true,
+      type: 'service_account',
+      path: 'service-accounts',
+    });
+    return Number(created.pk);
+  }
+
+  /**
+   * Mint an app-password token for a service account and return its secret key (IGA-06/S023). The key
+   * is only ever retrievable via `view_key/` (Authentik never returns it on list) → we create then
+   * read it once. Idempotent on `identifier`: any existing token with that identifier is deleted first
+   * so the returned key is always the live one (a re-provision rotates the credential). Throws if the
+   * user does not exist.
+   */
+  async mintAppPassword(username: string, identifier: string): Promise<string> {
+    const pk = await this.getUserPk(username);
+    if (pk === null) throw new Error(`cannot mint token: Authentik user "${username}" not found`);
+    // rotate: drop any prior token with this identifier so the key we view is the one we just set
+    await fetch(`${this.base}/core/tokens/${encodeURIComponent(identifier)}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${this.token}` },
+    }).catch(() => undefined);
+    await this.send('POST', '/core/tokens/', {
+      identifier,
+      user: pk,
+      intent: 'app_password',
+      expiring: false,
+      description: `service-account credential for ${username} (minted by ktayl-iam)`,
+    });
+    const view = await this.get<{ key: string }>(
+      `/core/tokens/${encodeURIComponent(identifier)}/view_key/`,
+    );
+    return view.key;
+  }
+
   /**
    * Disable a user (S017 Leaver): set is_active=false → blocks ALL SSO login immediately (every
    * app, default + business), the catch-all no-dangling-access control. Idempotent (no-op if the

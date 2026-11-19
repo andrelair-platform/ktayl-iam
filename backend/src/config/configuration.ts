@@ -55,6 +55,19 @@ export interface AppConfig {
      */
     securityApprover: string;
   };
+  /**
+   * S023 — Vault KV-v2 write for a minted SERVICE-ACCOUNT credential. Config-gated: blank addr/token →
+   * provisioning still creates the Authentik account + mints the token, but the credential is NOT
+   * persisted (only the planned ref is stored on the row; a consumer's ESO ExternalSecret reads the
+   * same path once a write-scoped token is wired). The write-token is least-privilege (create on
+   * `secret/data/platform/service-accounts/*` only) — delivered via ESO→Vault, never in Git.
+   */
+  vault: {
+    addr: string; // https://vault.devandre.sbs
+    token: string; // write-scoped to platform/service-accounts/*
+    mount: string; // secret
+    basePath: string; // platform/service-accounts
+  };
   workflow: {
     /**
      * DEV-ONLY: let an admin pass the acting `approver` matricule on a decision (to demo four-eyes
@@ -159,6 +172,12 @@ export function loadConfig(): AppConfig {
       erpnextApiSecret: (e.ERPNEXT_API_SECRET ?? '') as string,
       fallbackApprover: (e.FALLBACK_APPROVER ?? '') as string,
       securityApprover: (e.SECURITY_APPROVER ?? e.FALLBACK_APPROVER ?? '') as string,
+    },
+    vault: {
+      addr: (e.VAULT_ADDR ?? '') as string,
+      token: (e.VAULT_TOKEN ?? '') as string,
+      mount: (e.VAULT_KV_MOUNT ?? 'secret') as string,
+      basePath: (e.VAULT_SA_BASE_PATH ?? 'platform/service-accounts') as string,
     },
     workflow: {
       allowApproverOverride: (e.ALLOW_APPROVER_OVERRIDE ?? 'false') === 'true',
