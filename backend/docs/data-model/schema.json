@@ -573,6 +573,126 @@
           ]
         }
       ]
+    },
+    {
+      "name": "public.service_account",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "authentik_username",
+          "type": "varchar(160)",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "created_by",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "display_name",
+          "type": "varchar(200)",
+          "nullable": false
+        },
+        {
+          "name": "group_refs",
+          "type": "text[]",
+          "nullable": false,
+          "default": "'{}'::text[]"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "last_recertified_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "varchar(120)",
+          "nullable": false
+        },
+        {
+          "name": "owner_matricule",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "varchar(16)",
+          "nullable": false,
+          "default": "'requested'::character varying"
+        },
+        {
+          "name": "type",
+          "type": "varchar(16)",
+          "nullable": false
+        },
+        {
+          "name": "vault_secret_ref",
+          "type": "varchar(200)",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "service_account_pkey",
+          "def": "CREATE UNIQUE INDEX service_account_pkey ON public.service_account USING btree (id)",
+          "table": "public.service_account",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "uq_service_account_name",
+          "def": "CREATE UNIQUE INDEX uq_service_account_name ON public.service_account USING btree (name)",
+          "table": "public.service_account",
+          "columns": [
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "service_account_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.service_account",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "service_account_status_check",
+          "type": "CHECK",
+          "def": "CHECK (((status)::text = ANY ((ARRAY['requested'::character varying, 'active'::character varying, 'disabled'::character varying])::text[])))",
+          "table": "public.service_account",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "service_account_type_check",
+          "type": "CHECK",
+          "def": "CHECK (((type)::text = ANY ((ARRAY['qa'::character varying, 'm2m'::character varying, 'automation'::character varying])::text[])))",
+          "table": "public.service_account",
+          "referenced_table": "",
+          "columns": [
+            "type"
+          ]
+        }
+      ]
     }
   ],
   "relations": [
