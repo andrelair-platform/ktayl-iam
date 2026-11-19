@@ -61,6 +61,37 @@ describe('ServiceAccountService.getById', () => {
   });
 });
 
+describe('ServiceAccountService.recertify', () => {
+  it('stamps last_recertified_at on an active account + audits it', async () => {
+    const { svc, repo, audit } = makeService();
+    repo.findOne.mockResolvedValueOnce({ id: 'sa-1', name: 'ktayl-qa-finance', ownerMatricule: '100001', status: 'active', lastRecertifiedAt: null });
+    const out = await svc.recertify('sa-1', '100001');
+    expect(out.lastRecertifiedAt).toBeInstanceOf(Date);
+    expect(audit.record).toHaveBeenCalledWith('100001', 'service_account.recertified', 'service_account', 'sa-1', expect.objectContaining({ name: 'ktayl-qa-finance' }));
+  });
+
+  it('refuses to recertify a non-active account (409)', async () => {
+    const { svc, repo } = makeService();
+    repo.findOne.mockResolvedValueOnce({ id: 'sa-1', status: 'requested', ownerMatricule: '100001' });
+    await expect(svc.recertify('sa-1', '100001')).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('ServiceAccountService.listDueForRecertification', () => {
+  it('surfaces active accounts never recertified or stale past the window', async () => {
+    const { svc, repo } = makeService();
+    const old = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+    const recent = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    repo.find.mockResolvedValueOnce([
+      { id: 'a', status: 'active', lastRecertifiedAt: null }, // never → due
+      { id: 'b', status: 'active', lastRecertifiedAt: old }, // stale → due
+      { id: 'c', status: 'active', lastRecertifiedAt: recent }, // fresh → not due
+    ]);
+    const due = await svc.listDueForRecertification(90);
+    expect(due.map((s) => s.id)).toEqual(['a', 'b']);
+  });
+});
+
 describe('ServiceAccountService.updateStatus', () => {
   it('flips status and audits the transition', async () => {
     const { svc, repo, audit } = makeService();

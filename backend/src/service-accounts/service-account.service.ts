@@ -92,6 +92,39 @@ export class ServiceAccountService {
     return this.repo.save(sa);
   }
 
+  /**
+   * Owner/admin re-attestation that an ACTIVE account is still needed (S024 recertification). Stamps
+   * `last_recertified_at` + audits it — the periodic access-recert campaign's write. Active-only (a
+   * requested/disabled account isn't a live grant to re-attest → 409).
+   */
+  async recertify(id: string, actor: string): Promise<ServiceAccount> {
+    const sa = await this.getById(id);
+    if (sa.status !== 'active') {
+      throw new ConflictException(
+        `only an active service account can be recertified (is '${sa.status}')`,
+      );
+    }
+    sa.lastRecertifiedAt = new Date();
+    const saved = await this.repo.save(sa);
+    await this.audit.record(actor, 'service_account.recertified', 'service_account', id, {
+      name: sa.name,
+      owner: sa.ownerMatricule,
+      at: sa.lastRecertifiedAt.toISOString(),
+    });
+    return saved;
+  }
+
+  /**
+   * Active accounts DUE for recertification (S024): never recertified, or last recertified more than
+   * `maxAgeDays` ago. Drives the owner's periodic re-attestation — a stale privileged non-human
+   * identity that nobody re-attests is exactly what an access-recert campaign must surface.
+   */
+  async listDueForRecertification(maxAgeDays: number): Promise<ServiceAccount[]> {
+    const threshold = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000);
+    const active = await this.repo.find({ where: { status: 'active' }, order: { createdAt: 'DESC' } });
+    return active.filter((sa) => sa.lastRecertifiedAt === null || sa.lastRecertifiedAt < threshold);
+  }
+
   /** Flip lifecycle status (driven by S022/S023) + audit the transition. */
   async updateStatus(id: string, status: ServiceAccountStatus, actor: string): Promise<ServiceAccount> {
     const sa = await this.getById(id);
