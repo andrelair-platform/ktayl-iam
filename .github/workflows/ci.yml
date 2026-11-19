@@ -3,8 +3,12 @@ on:
   push:
     branches: [main]
     paths: ['backend/**', 'frontend/**', '.github/workflows/ci.yml']
+  # NO path filter on PRs: the workflow must run on EVERY PR so the required `CI Success` check always
+  # posts a status. A path-filtered workflow never runs on a docs-only PR → the required check never
+  # appears → the PR is permanently BLOCKED (observed on IGA-06 scope PR #85). The expensive jobs below
+  # gate on `changes.code`, so a docs-only PR skips them and `CI Success` still reports green (it treats
+  # a skipped gate job as a pass).
   pull_request:
-    paths: ['backend/**', 'frontend/**', '.github/workflows/ci.yml']
 
 permissions:
   contents: read
@@ -13,8 +17,27 @@ env:
   GHCR_ORG: ghcr.io/andrelair-platform          # prod images (public, durable, off local disk)
 
 jobs:
-  # ── L0/L1 gate (every push/PR) ──────────────────────────────────────────────
+  # Detect whether this change touches code — lets the expensive jobs skip on a docs-only PR while the
+  # workflow (and thus the required `CI Success` check) still runs.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'backend/**'
+              - 'frontend/**'
+              - '.github/workflows/ci.yml'
+
+  # ── L0/L1 gate (runs only when code changed) ────────────────────────────────
   backend:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,6 +52,8 @@ jobs:
       - run: npm test
 
   frontend:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -49,6 +74,8 @@ jobs:
   # PINNED: postgres:17.4 (tbls embeds database_version) + x86_64 baseline + tbls digest + explicit flags.
   # public schema; TypeORM's public.migrations table excluded via backend/.tbls.yml.
   schema-erd-drift:
+    needs: [changes]
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     defaults:
       run:
