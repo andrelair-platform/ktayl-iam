@@ -46,8 +46,6 @@ import {
 
 type Decision = { approver: string; decision: "approved" | "denied"; at: string; comment?: string } | null;
 const TYPES = ["contractor", "auditor", "broker", "partner"] as const;
-/** Engagement types we pay (→ prompt + soft-flag a missing pay-link, ADR-010). An `auditor` is typically unpaid. */
-const PAID_TYPES = new Set(["contractor", "broker", "partner"]);
 type Collaborator = {
   id: string;
   name: string;
@@ -55,7 +53,7 @@ type Collaborator = {
   email: string;
   type: string;
   company: string | null;
-  supplierRef: string | null;
+  hrWorkerRef: string | null;
   sponsorMatricule: string;
   purpose: string;
   groupRefs: string[];
@@ -101,19 +99,23 @@ function statusBadge(s: string) {
   return <Badge variant="secondary">{s}</Badge>;
 }
 
+/** The external party's engagement (ADR-012): a firm → Prestataire, no firm → Freelance. */
+function engagementOf(c: Collaborator) {
+  return c.company?.trim() ? "Prestataire" : "Freelance";
+}
+
 /**
- * Pay-link cell (ADR-010): a linked Supplier/contract ref shows as a mono code; a PAID type with no link
- * shows the soft, audited "⚠ no payment record linked" flag; an unpaid party shows a neutral dash.
+ * HR-record cell (ADR-012): the bound ERPNext non-payroll worker id (`HR-EMP-xxxxx`), or a muted "pending"
+ * while n8n is still creating/binding it. The person is a *worker* (never a supplier); their pay is a
+ * firm-level invoice handled in finance, not here.
  */
-function payLinkCell(c: Collaborator) {
-  if (c.supplierRef) return <code className="text-xs">{c.supplierRef}</code>;
-  if (PAID_TYPES.has(c.type))
-    return (
-      <Badge variant="warning" title="A paid contractor needs a finance Supplier/contract record (ERPNext Buying) to be paid — link it so access is traceable to the payment.">
-        ⚠ no payment record
-      </Badge>
-    );
-  return <span className="text-muted-foreground">—</span>;
+function hrRecordCell(c: Collaborator) {
+  if (c.hrWorkerRef) return <code className="text-xs">{c.hrWorkerRef}</code>;
+  return (
+    <Badge variant="secondary" title="The non-payroll ERPNext HR worker record is created by n8n on provisioning; this binds once it exists.">
+      pending
+    </Badge>
+  );
 }
 
 function expiryLabel(iso: string | null) {
@@ -282,8 +284,8 @@ export default function ExternalCollaboratorsPage() {
                     </div>
                     {c && (
                       <p className="mt-3 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
-                        Groups: {c.groupRefs.join(", ")} · expires{" "}
-                        {c.expiresAt ? new Date(c.expiresAt).toLocaleDateString() : "—"} · pay-link: {payLinkCell(c)}
+                        {engagementOf(c)}{c.company ? ` · ${c.company}` : ""} · groups: {c.groupRefs.join(", ")} · expires{" "}
+                        {c.expiresAt ? new Date(c.expiresAt).toLocaleDateString() : "—"}
                       </p>
                     )}
                   </Card>
@@ -301,8 +303,8 @@ export default function ExternalCollaboratorsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Pay-link</TableHead>
+                      <TableHead>Engagement</TableHead>
+                      <TableHead>HR record</TableHead>
                       <TableHead>Manager</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Expires</TableHead>
@@ -315,10 +317,12 @@ export default function ExternalCollaboratorsPage() {
                         <TableCell>
                           <div className="font-medium">{c.name}</div>
                           <div className="text-xs text-muted-foreground">{c.displayName} · {c.email}</div>
-                          <div className="text-xs text-muted-foreground">{c.company ?? "Freelance"}</div>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{c.type}</TableCell>
-                        <TableCell>{payLinkCell(c)}</TableCell>
+                        <TableCell>
+                          <div>{engagementOf(c)}</div>
+                          <div className="text-xs text-muted-foreground">{c.company ?? "no firm"} · {c.type}</div>
+                        </TableCell>
+                        <TableCell>{hrRecordCell(c)}</TableCell>
                         <TableCell>
                           <PersonLabel matricule={c.sponsorMatricule} name={nameOf(c.sponsorMatricule)} />
                         </TableCell>
@@ -510,7 +514,6 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
     email: "",
     type: "contractor" as (typeof TYPES)[number],
     company: "",
-    supplierRef: "",
     sponsorMatricule: "",
     groups: "",
     purpose: "",
@@ -530,7 +533,6 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
           email: f.email,
           type: f.type,
           company: f.company.trim() || undefined,
-          supplierRef: f.supplierRef.trim() || undefined,
           sponsorMatricule: f.sponsorMatricule,
           groupRefs: f.groups.split(",").map((g) => g.trim()).filter(Boolean),
           purpose: f.purpose,
@@ -539,7 +541,7 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
       });
       toast.success(`Request filed for ${f.name}`);
       setOpen(false);
-      setF({ name: "", displayName: "", email: "", type: "contractor", company: "", supplierRef: "", sponsorMatricule: "", groups: "", purpose: "", expiryDays: "90" });
+      setF({ name: "", displayName: "", email: "", type: "contractor", company: "", sponsorMatricule: "", groups: "", purpose: "", expiryDays: "90" });
       onDone();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : String(e));
@@ -588,21 +590,12 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
             </div>
             <Field id="ec-manager" label="Manager matricule (sponsor)" value={f.sponsorMatricule} onChange={(v) => set("sponsorMatricule", v)} placeholder="100006" />
           </div>
-          <Field id="ec-company" label="Company (blank = freelance)" value={f.company} onChange={(v) => set("company", v)} placeholder="Acme Pentest Ltd" />
           <div className="grid gap-1.5">
-            <Field
-              id="ec-supplier"
-              label={PAID_TYPES.has(f.type) ? "Supplier / contract ref (required to pay a contractor)" : "Supplier / contract ref (optional — unpaid party)"}
-              value={f.supplierRef}
-              onChange={(v) => set("supplierRef", v)}
-              placeholder="SUP-00042"
-            />
+            <Field id="ec-company" label="Firm / ESN (blank = freelance)" value={f.company} onChange={(v) => set("company", v)} placeholder="Acme Consulting (ESN)" />
             <p className="text-xs text-muted-foreground">
-              Links access to the finance <strong>Supplier</strong> record (ERPNext Buying / Procurement) a paid
-              contractor is paid against. IAM references it — it never creates the finance record.
-              {PAID_TYPES.has(f.type) && !f.supplierRef.trim() ? (
-                <span className="text-warning"> You can file without it, but access shows “⚠ no payment record” until linked.</span>
-              ) : null}
+              A firm → <strong>Prestataire</strong>; blank → <strong>Freelance</strong>. On provisioning a
+              <strong> non-payroll HR worker</strong> is created in ERPNext (never payroll). Their pay is a
+              firm-level invoice handled in finance — not here, and they are never a supplier.
             </p>
           </div>
           <Field id="ec-groups" label="Groups (comma-sep)" value={f.groups} onChange={(v) => set("groups", v)} placeholder="GROUP_Claims_ReadOnly" />

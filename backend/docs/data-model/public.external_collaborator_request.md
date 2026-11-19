@@ -58,13 +58,13 @@ erDiagram
   varchar_200_ email
   timestamp_with_time_zone expires_at
   text__ group_refs
+  varchar_60_ hr_worker_ref
   uuid id
   timestamp_with_time_zone last_recertified_at
   varchar_120_ name
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
-  varchar_120_ supplier_ref
   varchar_20_ type
 }
 ```

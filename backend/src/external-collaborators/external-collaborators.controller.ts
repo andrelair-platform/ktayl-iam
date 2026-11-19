@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request as ExpressRequest } from 'express';
 import type { AuthUser } from '../auth/oidc.strategy.js';
@@ -43,7 +53,6 @@ export class ExternalCollaboratorsController {
         email: dto.email,
         type: dto.type,
         company: dto.company,
-        supplierRef: dto.supplierRef,
         sponsorMatricule: dto.sponsorMatricule,
         groupRefs: dto.groupRefs,
         purpose: dto.purpose,
@@ -80,6 +89,24 @@ export class ExternalCollaboratorsController {
   @Post(':id/provision')
   provision(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {
     return this.provisioning.provision(id, actorOf(req));
+  }
+
+  /**
+   * Bind the ERPNext **HR worker ref** (ADR-012) — the `HR-EMP-xxxxx` id of the non-payroll worker record
+   * **n8n** created for this collaborator on the `onboarded` event. n8n calls this (a scoped service
+   * principal) to write the id back; IAM never creates/writes the ERPNext record. Idempotent + audited.
+   */
+  @Post(':id/hr-worker-ref')
+  bindHrWorker(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { hrWorkerRef?: string },
+    @Req() req: ExpressRequest,
+  ) {
+    const ref = (body?.hrWorkerRef ?? '').trim();
+    if (!ref) {
+      throw new BadRequestException('hrWorkerRef is required');
+    }
+    return this.collaborators.setHrWorkerRef(id, ref, actorOf(req));
   }
 
   /** Active collaborators expiring within `?days=` (default 30) — the renewal worklist (S028). */

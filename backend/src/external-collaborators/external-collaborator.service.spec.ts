@@ -62,23 +62,33 @@ describe('ExternalCollaboratorService.create', () => {
     expect(audit2.record.mock.calls[0][4]).toMatchObject({ company: "freelance" });
   });
 
-  it('captures the pay-link (supplierRef) when given, and stores null when omitted (ADR-010)', async () => {
-    const { svc, repo, audit } = makeService();
-    await svc.create({ ...INPUT, supplierRef: 'SUP-00042' });
-    expect(repo.create.mock.calls[0][0].supplierRef).toBe('SUP-00042');
-    expect(audit.record.mock.calls[0][4]).toMatchObject({ supplierRef: 'SUP-00042' });
-
-    const { svc: svc2, repo: repo2, audit: audit2 } = makeService();
-    await svc2.create(INPUT); // no supplierRef
-    expect(repo2.create.mock.calls[0][0].supplierRef).toBeNull();
-    expect(audit2.record.mock.calls[0][4]).toMatchObject({ supplierRef: null });
-  });
-
   it('never stores a credential value (only the governance shape)', async () => {
     const { svc, repo } = makeService();
     await svc.create(INPUT);
     const saved = repo.create.mock.calls[0][0];
     expect(JSON.stringify(saved)).not.toMatch(/password|token|secret/i);
+  });
+});
+
+describe('ExternalCollaboratorService.setHrWorkerRef', () => {
+  it('binds the ERPNext HR worker ref + audits (ADR-012); re-binding the same ref is a no-op', async () => {
+    const { svc, repo, audit } = makeService();
+    repo.findOne.mockResolvedValueOnce({ id: 'ec-1', hrWorkerRef: null });
+    const out = await svc.setHrWorkerRef('ec-1', ' HR-EMP-00042 ', ACTOR);
+    expect(out.hrWorkerRef).toBe('HR-EMP-00042');
+    expect(audit.record).toHaveBeenCalledWith(
+      ACTOR,
+      'external_collaborator.hr_worker_bound',
+      'external_collaborator',
+      'ec-1',
+      { hrWorkerRef: 'HR-EMP-00042' },
+    );
+
+    const { svc: s2, repo: r2, audit: a2 } = makeService();
+    r2.findOne.mockResolvedValueOnce({ id: 'ec-1', hrWorkerRef: 'HR-EMP-00042' });
+    await s2.setHrWorkerRef('ec-1', 'HR-EMP-00042', ACTOR);
+    expect(r2.save).not.toHaveBeenCalled();
+    expect(a2.record).not.toHaveBeenCalled();
   });
 });
 

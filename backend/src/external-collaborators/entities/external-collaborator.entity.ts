@@ -44,14 +44,14 @@ export class ExternalCollaborator {
   company!: string | null;
 
   /**
-   * The **pay-link** (ADR-010): a READ-ONLY reference to the finance/procurement **Supplier** (or contract)
-   * record that a **paid** contractor is paid against — ERPNext Buying / Procurement domain (#31). IAM only
-   * *stores + surfaces* it for traceability; it **never creates or writes** the finance record (ADR-009 holds).
-   * Null = no payment record linked yet (a soft, audited gap for paid types; legitimately absent for an
-   * unpaid external party such as a regulator-appointed auditor).
+   * The **HR worker ref** (ADR-012): the canonical ERPNext **Employee** id (`HR-EMP-xxxxx`) of the
+   * *non-payroll HR worker* record created for this collaborator — `employment_type = Prestataire` (belongs
+   * to the firm in `company`) or `Freelance` (no firm), **no Salary Structure** → never in a payroll run.
+   * **n8n** creates that record on the `onboarded` event and **binds the id back** here (IAM never writes
+   * ERPNext — ADR-009). Null until bound. The person is a *worker*, not a supplier.
    */
-  @Column({ name: 'supplier_ref', type: 'varchar', length: 120, nullable: true })
-  supplierRef!: string | null;
+  @Column({ name: 'hr_worker_ref', type: 'varchar', length: 60, nullable: true })
+  hrWorkerRef!: string | null;
 
   /** The accountable internal **sponsor** = the manager who requests + owns this collaborator (matricule →
    *  an ACTIVE ERPNext employee; validated at request time, S026). The collaborator is attached to them. */

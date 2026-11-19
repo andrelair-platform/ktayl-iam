@@ -1,8 +1,10 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
 import { AuthentikClient } from '../directory/authentik.client.js';
 import { AuditService } from '../catalog/audit.service.js';
 import { ExternalCollaboratorService } from './external-collaborator.service.js';
 import type { ExternalCollaborator } from './entities/external-collaborator.entity.js';
+import { ExternalCollaboratorEventPublisher } from './external-collaborator-event.publisher.js';
+import { buildOnboardedEvent } from './external-collaborator-events.js';
 
 /**
  * Provisions an APPROVED external collaborator to Authentik (IGA-07/S027). Runs after the Sponsor+Security
@@ -25,6 +27,8 @@ export class ExternalCollaboratorProvisioningService {
     private readonly collaborators: ExternalCollaboratorService,
     private readonly authentik: AuthentikClient,
     private readonly audit: AuditService,
+    /** ADR-012 onboarded-event emit. @Optional so unit tests construct the service without NATS. */
+    @Optional() private readonly events?: ExternalCollaboratorEventPublisher,
   ) {}
 
   async provision(collaboratorId: string, actor: string): Promise<ExternalCollaborator> {
@@ -59,6 +63,10 @@ export class ExternalCollaboratorProvisioningService {
       this.log.log(
         `provisioned external collaborator "${c.name}" → groups [${c.groupRefs.join(', ')}], invite ${invite ? 'issued' : 'skipped'}`,
       );
+
+      // ADR-012 seam: emit `onboarded` so n8n creates the non-payroll ERPNext HR worker + binds the
+      // `hr_worker_ref` back (IAM never writes ERPNext). Best-effort — a publish failure never fails provisioning.
+      await this.events?.emitOnboarded(buildOnboardedEvent(updated));
       return updated;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

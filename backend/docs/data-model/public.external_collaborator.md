@@ -12,13 +12,13 @@
 | email               | varchar(200)             |                                | false    |                                                                                 |         |         |
 | expires_at          | timestamp with time zone |                                | true     |                                                                                 |         |         |
 | group_refs          | text[]                   | '{}'::text[]                   | false    |                                                                                 |         |         |
+| hr_worker_ref       | varchar(60)              |                                | true     |                                                                                 |         |         |
 | id                  | uuid                     | gen_random_uuid()              | false    | [public.external_collaborator_request](public.external_collaborator_request.md) |         |         |
 | last_recertified_at | timestamp with time zone |                                | true     |                                                                                 |         |         |
 | name                | varchar(120)             |                                | false    |                                                                                 |         |         |
 | purpose             | text                     |                                | false    |                                                                                 |         |         |
 | sponsor_matricule   | varchar(32)              |                                | false    |                                                                                 |         |         |
 | status              | varchar(16)              | 'requested'::character varying | false    |                                                                                 |         |         |
-| supplier_ref        | varchar(120)             |                                | true     |                                                                                 |         |         |
 | type                | varchar(20)              |                                | false    |                                                                                 |         |         |
 
 ## Constraints
@@ -52,13 +52,13 @@ erDiagram
   varchar_200_ email
   timestamp_with_time_zone expires_at
   text__ group_refs
+  varchar_60_ hr_worker_ref
   uuid id
   timestamp_with_time_zone last_recertified_at
   varchar_120_ name
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
-  varchar_120_ supplier_ref
   varchar_20_ type
 }
 "public.external_collaborator_request" {

@@ -301,6 +301,11 @@
           "default": "'{}'::text[]"
         },
         {
+          "name": "hr_worker_ref",
+          "type": "varchar(60)",
+          "nullable": true
+        },
+        {
           "name": "id",
           "type": "uuid",
           "nullable": false,
@@ -331,11 +336,6 @@
           "type": "varchar(16)",
           "nullable": false,
           "default": "'requested'::character varying"
-        },
-        {
-          "name": "supplier_ref",
-          "type": "varchar(120)",
-          "nullable": true
         },
         {
           "name": "type",
