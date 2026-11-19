@@ -21,7 +21,8 @@ back to ERPNext** — an external collaborator is an **IAM-only identity with no
 | `id` (uuid) | |
 | `name` / `displayName` | the Authentik username to provision + the human-readable name |
 | `email` | contact / invite target |
-| `sponsorMatricule` | the accountable internal **employee** — **validated as ACTIVE in ERPNext** (not terminated/unknown) |
+| `company` *(nullable)* | the **contractor firm** the external party belongs to — **`null` = freelance** (no firm) |
+| `sponsorMatricule` | the accountable internal **employee = the manager who requests + owns the collaborator** (the collaborator is *attached* to them) — **validated as ACTIVE in ERPNext** (not terminated/unknown) |
 | `purpose` (text) | mandatory justification (audit reason) |
 | `groupRefs` (text[]) | the **scoped** entitlement — specific `GROUP_<x>`, never birthright-plus |
 | `status` | `requested → active → expired → disabled` (+ `flagged` when the sponsor leaves) |
@@ -32,6 +33,33 @@ back to ERPNext** — an external collaborator is an **IAM-only identity with no
 
 Plus an `external_collaborator_request` (sponsor + Security four-eyes legs), identical in shape to
 `service_account_request` (reuse the pattern + the four-eyes `resolveApprovers`).
+
+### Enhancement decision — collaborator company + freelance + sponsor-as-manager (2026-11-19)
+**The request (owner):** *"when IT operations create the external account, it must be **double-validated**
+before it's effected — by **the manager** the collaborator will work with / who employs them onto his team,
+**then the admin** — and we need the external contractor **company** he belongs to, or he may be a **freelance**."*
+
+**The flow (already built — S026):** IT/Admin **files** the request → **double validation** (the **manager**
+= the `sponsor` leg · **then the admin/Security** leg) → **both approve → provisioned** (S027). The owner's
+"attached to the manager" **is** the sponsor leg; IGA terminology calls that accountable internal manager the
+*sponsor*. In the **UI we label it "Manager"** so it reads the way the business thinks about it. The only new
+data is `company`.
+
+**Decision.**
+- **Add a nullable `company` field** (the contractor firm). **`null`/blank = freelance** — no firm. It is
+  **descriptive metadata**, not an access control (access is still the scoped `groupRefs` + the sponsor's
+  accountability), so it is **optional** and does not gate provisioning. Captured in the request, shown on
+  the collaborator, and recorded in the audit (`company` → `"freelance"` when absent).
+- **"Attached to the manager who requests" = the existing `sponsorMatricule`.** No new field: the **sponsor
+  IS that manager** — the accountable internal employee who requests + owns the collaborator and whose
+  **ERPNext-Leaver auto-flags them** (the attachment is what the sentinel enforces). We only **clarify the
+  semantics** (label it the *sponsoring manager* in the UI) rather than duplicate the relationship.
+- **Migration is additive + back-compatible** (`ADD COLUMN company` nullable → existing rows are freelance),
+  so it needs no data backfill and carries no schema-drift risk.
+
+*Rationale:* keeps the identity record honest about *who the external party is and where they're from*
+(firm vs freelance) for audit/DORA third-party context, without inventing a second owner relationship or
+making company a hard requirement that blocks a legitimate freelance engagement.
 
 ## Lifecycle
 ```

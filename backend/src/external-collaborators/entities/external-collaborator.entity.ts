@@ -39,7 +39,12 @@ export class ExternalCollaborator {
   @Column({ type: 'varchar', length: 20 })
   type!: ExternalCollaboratorType;
 
-  /** The accountable internal **sponsor** (matricule → an ACTIVE ERPNext employee; validated at request time, S026). */
+  /** The external party's **company** (the contractor firm they belong to). **Null = freelance** (no firm). */
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  company!: string | null;
+
+  /** The accountable internal **sponsor** = the manager who requests + owns this collaborator (matricule →
+   *  an ACTIVE ERPNext employee; validated at request time, S026). The collaborator is attached to them. */
   @Column({ name: 'sponsor_matricule', type: 'varchar', length: 32 })
   sponsorMatricule!: string;
 

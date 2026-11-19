@@ -12,6 +12,7 @@ import { ServiceAccounts1727001000000 } from './1727001000000-ServiceAccounts.js
 import { ServiceAccountRequests1727001100000 } from './1727001100000-ServiceAccountRequests.js';
 import { ExternalCollaborators1727001200000 } from './1727001200000-ExternalCollaborators.js';
 import { ExternalCollaboratorRequests1727001300000 } from './1727001300000-ExternalCollaboratorRequests.js';
+import { ExternalCollaboratorCompany1727001400000 } from './1727001400000-ExternalCollaboratorCompany.js';
 
 /** Ordered migration set (run on boot via TypeORM `migrationsRun`). Append new migrations here. */
 export const MIGRATIONS = [
@@ -29,4 +30,5 @@ export const MIGRATIONS = [
   ServiceAccountRequests1727001100000, // IGA-06/S022 — service-account request + dual-approval
   ExternalCollaborators1727001200000, // IGA-07/S025 — governed external-collaborator table
   ExternalCollaboratorRequests1727001300000, // IGA-07/S026 — external-collaborator request + Sponsor+Security four-eyes
+  ExternalCollaboratorCompany1727001400000, // IGA-07 enhancement — collaborator company (null = freelance)
 ];

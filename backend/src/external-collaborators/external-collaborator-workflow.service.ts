@@ -113,6 +113,7 @@ export class ExternalCollaboratorWorkflowService {
       req.id,
       {
         collaborator: collaborator.name,
+        company: collaborator.company ?? 'freelance',
         sponsor: input.sponsorMatricule,
         groups: input.groupRefs,
         expiresAt: expiresAt.toISOString(),

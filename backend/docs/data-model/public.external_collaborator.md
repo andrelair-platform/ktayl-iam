@@ -5,6 +5,7 @@
 | Name                | Type                     | Default                        | Nullable | Children                                                                        | Parents | Comment |
 | ------------------- | ------------------------ | ------------------------------ | -------- | ------------------------------------------------------------------------------- | ------- | ------- |
 | authentik_username  | varchar(160)             |                                | true     |                                                                                 |         |         |
+| company             | varchar(200)             |                                | true     |                                                                                 |         |         |
 | created_at          | timestamp with time zone | now()                          | false    |                                                                                 |         |         |
 | created_by          | varchar(32)              |                                | false    |                                                                                 |         |         |
 | display_name        | varchar(200)             |                                | false    |                                                                                 |         |         |
@@ -43,6 +44,7 @@ erDiagram
 
 "public.external_collaborator" {
   varchar_160_ authentik_username
+  varchar_200_ company
   timestamp_with_time_zone created_at
   varchar_32_ created_by
   varchar_200_ display_name

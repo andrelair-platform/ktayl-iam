@@ -52,6 +52,7 @@ type Collaborator = {
   displayName: string;
   email: string;
   type: string;
+  company: string | null;
   sponsorMatricule: string;
   purpose: string;
   groupRefs: string[];
@@ -173,9 +174,9 @@ export default function ExternalCollaboratorsPage() {
       actions={can("collaborators:manage") ? <NewRequestDialog onDone={reload} /> : null}
     >
       <p className="mb-5 max-w-2xl text-sm text-muted-foreground">
-        Governed access for human non-employees (contractors, brokers, auditors). <strong>Sponsor +
-        Security</strong> four-eyes before provisioning; a hard expiry + a daily sponsor-health sweep keep
-        access time-boxed (never orphaned).
+        Governed access for human non-employees (contractors, brokers, auditors — or freelance). IT files it;
+        <strong> the manager + the admin/Security</strong> double-validate before provisioning; a hard expiry
+        + a daily sponsor-health sweep keep access time-boxed (never orphaned).
       </p>
 
       {flaggedCount > 0 && (
@@ -252,7 +253,7 @@ export default function ExternalCollaboratorsPage() {
                       />
                       <Leg
                         icon={UserRound}
-                        label="Sponsor"
+                        label="Manager (sponsor)"
                         matricule={r.sponsorApprover}
                         name={nameOf(r.sponsorApprover)}
                         decision={r.sponsorDecision}
@@ -282,7 +283,7 @@ export default function ExternalCollaboratorsPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
-                      <TableHead>Sponsor</TableHead>
+                      <TableHead>Manager</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Expires</TableHead>
                       <TableHead className="w-10" />
@@ -294,6 +295,7 @@ export default function ExternalCollaboratorsPage() {
                         <TableCell>
                           <div className="font-medium">{c.name}</div>
                           <div className="text-xs text-muted-foreground">{c.displayName} · {c.email}</div>
+                          <div className="text-xs text-muted-foreground">{c.company ?? "Freelance"}</div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">{c.type}</TableCell>
                         <TableCell>
@@ -486,6 +488,7 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
     displayName: "",
     email: "",
     type: "contractor" as (typeof TYPES)[number],
+    company: "",
     sponsorMatricule: "",
     groups: "",
     purpose: "",
@@ -504,6 +507,7 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
           displayName: f.displayName,
           email: f.email,
           type: f.type,
+          company: f.company.trim() || undefined,
           sponsorMatricule: f.sponsorMatricule,
           groupRefs: f.groups.split(",").map((g) => g.trim()).filter(Boolean),
           purpose: f.purpose,
@@ -512,7 +516,7 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
       });
       toast.success(`Request filed for ${f.name}`);
       setOpen(false);
-      setF({ name: "", displayName: "", email: "", type: "contractor", sponsorMatricule: "", groups: "", purpose: "", expiryDays: "90" });
+      setF({ name: "", displayName: "", email: "", type: "contractor", company: "", sponsorMatricule: "", groups: "", purpose: "", expiryDays: "90" });
       onDone();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : String(e));
@@ -532,7 +536,8 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
         <DialogHeader>
           <DialogTitle>Request an external collaborator</DialogTitle>
           <DialogDescription>
-            Sponsor + Security approve before provisioning. The sponsor must be an active employee; access is
+            Double validation before provisioning: the <strong>manager</strong> (who employs them) + the{" "}
+            <strong>admin/Security</strong> both approve. The manager must be an active employee; access is
             time-boxed (max 180 days).
           </DialogDescription>
         </DialogHeader>
@@ -558,8 +563,9 @@ function NewRequestDialog({ onDone }: { onDone: () => void }) {
                 </SelectContent>
               </Select>
             </div>
-            <Field id="ec-sponsor" label="Sponsor matricule" value={f.sponsorMatricule} onChange={(v) => set("sponsorMatricule", v)} placeholder="100006" />
+            <Field id="ec-manager" label="Manager matricule (sponsor)" value={f.sponsorMatricule} onChange={(v) => set("sponsorMatricule", v)} placeholder="100006" />
           </div>
+          <Field id="ec-company" label="Company (blank = freelance)" value={f.company} onChange={(v) => set("company", v)} placeholder="Acme Pentest Ltd" />
           <Field id="ec-groups" label="Groups (comma-sep)" value={f.groups} onChange={(v) => set("groups", v)} placeholder="GROUP_Claims_ReadOnly" />
           <div className="grid grid-cols-2 gap-3">
             <Field id="ec-purpose" label="Purpose" value={f.purpose} onChange={(v) => set("purpose", v)} placeholder="External pentest of…" />
