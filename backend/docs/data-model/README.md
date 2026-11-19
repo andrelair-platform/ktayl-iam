@@ -2,14 +2,15 @@
 
 ## Tables
 
-| Name                                        | Columns | Comment | Type       |
-| ------------------------------------------- | ------- | ------- | ---------- |
-| [public.application](public.application.md) | 7       |         | BASE TABLE |
-| [public.assignment](public.assignment.md)   | 10      |         | BASE TABLE |
-| [public.audit_log](public.audit_log.md)     | 7       |         | BASE TABLE |
-| [public.identity](public.identity.md)       | 16      |         | BASE TABLE |
-| [public.request](public.request.md)         | 10      |         | BASE TABLE |
-| [public.role](public.role.md)               | 8       |         | BASE TABLE |
+| Name                                                | Columns | Comment | Type       |
+| --------------------------------------------------- | ------- | ------- | ---------- |
+| [public.application](public.application.md)         | 7       |         | BASE TABLE |
+| [public.assignment](public.assignment.md)           | 10      |         | BASE TABLE |
+| [public.audit_log](public.audit_log.md)             | 7       |         | BASE TABLE |
+| [public.identity](public.identity.md)               | 16      |         | BASE TABLE |
+| [public.request](public.request.md)                 | 10      |         | BASE TABLE |
+| [public.role](public.role.md)                       | 8       |         | BASE TABLE |
+| [public.service_account](public.service_account.md) | 12      |         | BASE TABLE |
 
 ## Relations
 
@@ -89,6 +90,20 @@ erDiagram
   varchar_120_ name
   varchar_32_ owner
   timestamp_with_time_zone updated_at
+}
+"public.service_account" {
+  varchar_160_ authentik_username
+  timestamp_with_time_zone created_at
+  varchar_32_ created_by
+  varchar_200_ display_name
+  text__ group_refs
+  uuid id
+  timestamp_with_time_zone last_recertified_at
+  varchar_120_ name
+  varchar_32_ owner_matricule
+  varchar_16_ status
+  varchar_16_ type
+  varchar_200_ vault_secret_ref
 }
 ```
 

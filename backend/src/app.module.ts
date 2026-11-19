@@ -13,6 +13,7 @@ import { SyncModule } from './sync/sync.module.js';
 import { WorkflowModule } from './workflow/workflow.module.js';
 import { AccessModule } from './access/access.module.js';
 import { LifecycleModule } from './lifecycle/lifecycle.module.js';
+import { ServiceAccountsModule } from './service-accounts/service-accounts.module.js';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { LifecycleModule } from './lifecycle/lifecycle.module.js';
     WorkflowModule, // S004 — dual-approval workflow
     AccessModule, // S006 — who-has-what + audit
     LifecycleModule, // S015/S016 — HR Joiner intake + workspace provisioning
+    ServiceAccountsModule, // IGA-06/S021 — governed service/technical-account provisioning
   ],
   controllers: [AppController],
   providers: [AppService],

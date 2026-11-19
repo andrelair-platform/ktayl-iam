@@ -8,6 +8,7 @@ import { LeaverColumns1727000600000 } from './1727000600000-LeaverColumns.js';
 import { SessionStore1727000700000 } from './1727000700000-SessionStore.js';
 import { SeedPlatformToolsCatalog1727000800000 } from './1727000800000-SeedPlatformToolsCatalog.js';
 import { SeedKtaylCoreRoles1727000900000 } from './1727000900000-SeedKtaylCoreRoles.js';
+import { ServiceAccounts1727001000000 } from './1727001000000-ServiceAccounts.js';
 
 /** Ordered migration set (run on boot via TypeORM `migrationsRun`). Append new migrations here. */
 export const MIGRATIONS = [
@@ -21,4 +22,5 @@ export const MIGRATIONS = [
   SessionStore1727000700000, // 12-factor #6 — Postgres-backed express-session (not in-memory)
   SeedPlatformToolsCatalog1727000800000, // engineering tools catalog (Kargo/Vault/Backstage + SSO-gated) — SoR for the platform-access-matrix
   SeedKtaylCoreRoles1727000900000, // ktayl-core (Insurance LOB) app + functional roles (Underwriting/Compliance/Finance/Complaints)
+  ServiceAccounts1727001000000, // IGA-06/S021 — governed service/technical-account table
 ];
