@@ -20,7 +20,9 @@
 
   --primary: #00375a; /* navy */
   --primary-foreground: #ffffff;
-  --brand: #e8690b; /* orange CTA */
+  /* Deep ktayl orange — darkened from the #e8690b brand so white text on it clears WCAG AA 4.5:1
+     (the bright brand failed at ~3.4:1). Used for CTAs + accents. */
+  --brand: #c05600;
   --brand-foreground: #ffffff;
 
   --secondary: #eef2f5;

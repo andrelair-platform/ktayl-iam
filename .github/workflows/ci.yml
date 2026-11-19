@@ -65,6 +65,7 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm run lint
       - run: npm run build
+      - run: npm test # L1 + the axe a11y gate (RGAA / BC02)
 
   # ── Schema docs drift-check: the committed ERD must match the TypeORM migrations ──
   # Runs the TypeORM migrations (via `npm run db:migrate`, the standalone runner — no app boot) on an
