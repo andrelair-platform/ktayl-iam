@@ -12,6 +12,7 @@
 | [006](#adr-006) | **Custom-build** the governance platform (NestJS + Next.js + Postgres) — not off-the-shelf MidPoint | Proposed | SA/TL |
 | [007](#adr-007) | **Dual approval (four-eyes): manager + role owner** before any grant is provisioned | Proposed | SA/SEC |
 | [008](#adr-008) | **Matricule** = immutable 6-digit employee ID (from ERPNext) = Authentik username | Proposed | SA/TL |
+| [009](#adr-009) | **External collaborators** (IGA-07): governed human non-employee identities — sponsor + Security four-eyes, hard expiry, sponsor-Leaver safety net | **Accepted** | SA/SEC |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -93,7 +94,7 @@ evidence. Requires the platform to know the **manager relationship** (ERPNext de
 
 ## ADR-008 — Matricule: immutable employee ID as the user identifier {#adr-008}
 **Context.** Users need a **stable** identifier. Names and emails change (marriage, corrections, role
-moves); using them as keys corrupts joins + audit over time. An enterprise/insurer (HDI shape) keys on an
+moves); using them as keys corrupts joins + audit over time. A regulated European insurer keys on an
 immutable **matricule** (employee ID).
 **Decision (owner, 2026-09-20).** Every user has an immutable **matricule**:
 - **Format:** a **6-character, zero-padded string** (range `100000`–`999999`; stored as a **string**, never
@@ -109,3 +110,42 @@ immutable **matricule** (employee ID).
 **Migration:** existing name-based usernames (e.g. `kanmegnea`) move to matricules **deliberately** — mint the
 matricule in ERPNext → set it as the Authentik username → because the IAM platform keys on `sub`, nothing breaks.
 New users get a matricule at onboarding.
+
+## ADR-009 — External collaborators: governed human non-employee identities (IGA-07) {#adr-009}
+**Context.** Some humans who need platform access are **not employees** — contractors, brokers, external
+auditors, partners. They are **not in ERPNext** (not on payroll), so they cannot arrive via the HR
+Joiner/Mover/Leaver flow, and an ordinary employee must not be able to mint one. Left ungoverned they are the
+classic **orphaned-access** vector (access that outlives the engagement, no lifecycle owner). This is the
+**architecture + security review gate** for the IGA-07 epic ([spec](../../external-collaborator-onboarding.md)).
+
+**Decision (SA + SEC, accepted 2026-11-19).** Build external-collaborator onboarding as an **IT/Admin-only**
+capability (`collaborators:manage`) **inside the IAM console**, as a close **adaptation of the IGA-06 service
+account** (governed identity → four-eyes → provision to Authentik → recertify), with the human/non-employee
+rules layered on:
+- **Sponsor = an active ERPNext employee** (validated live; terminated/unknown rejected) — the accountable human.
+- **Sponsor + Security four-eyes** beyond read-only / for any production/sensitive scope (Security guards
+  scope + expiry duration; the sponsor optimises for speed).
+- **Hard expiry** (default ~90d, max ~180d) + **mandatory renewal** (re-approval) → **auto-suspend on expiry**.
+- **Sponsor-Leaver safety net** — an ERPNext Leaver event for a sponsor **auto-flags/suspends** their
+  collaborators (hooks the existing JML consumer).
+- **Scoped entitlement only** (specific `GROUP_<x>`, never birthright-plus); **IAM-only identity** — the
+  console **never writes back to ERPNext** (no workforce record).
+- Capability-gated (`@RequireCapability`), every action append-only **audited**, actor from the session.
+
+**Security review (SEC).** Threats + mitigations: **orphaned access** → hard expiry + sponsor-Leaver flag;
+**over-provisioning** → the Security leg + scoped-only entitlement; **external-party PII** (name/email) →
+minimal fields, audited access, treated as a P-class data surface; **privileged minting** → IT/Admin-only +
+four-eyes, never employee self-service. Human login provisioning uses an **Authentik invitation** (not a
+Vault machine token). **No new trust boundary beyond the existing Authentik-write path** the platform already
+holds. **Verdict: approved to build.** *(Solo determination — the owner acts as SA + SEC; recorded here as the
+gate evidence, same discipline as the platform's accepted-risk determinations.)*
+
+**Rejected alternatives.** (a) *Model collaborators as ERPNext employees* — pollutes the workforce
+system-of-record with non-staff + would route them through payroll/JML (wrong lifecycle). (b) *Provision them
+directly in Authentik by hand* — no governance, no expiry, no audit, no four-eyes (the exact gap this closes).
+(c) *A greenfield module* — rejected: it is 80% the IGA-06 shape; reuse the `service_account*` code.
+
+**Consequences.** Closes a real orphaned-access risk with an auditable, time-boxed control (DORA/ISO access
+evidence). Reuses the IGA-06 entity/request/four-eyes/provision/recertify code → fast to build. Adds a human
+**invitation** provisioning path + a **scheduled expiry sweep** + a JML-Leaver hook. Build = stories
+S025–S030 (epic #99) on board #17.

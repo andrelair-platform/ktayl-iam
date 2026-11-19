@@ -7,6 +7,7 @@
 | [public.application](public.application.md)                         | 7       |         | BASE TABLE |
 | [public.assignment](public.assignment.md)                           | 10      |         | BASE TABLE |
 | [public.audit_log](public.audit_log.md)                             | 7       |         | BASE TABLE |
+| [public.external_collaborator](public.external_collaborator.md)     | 14      |         | BASE TABLE |
 | [public.identity](public.identity.md)                               | 16      |         | BASE TABLE |
 | [public.request](public.request.md)                                 | 10      |         | BASE TABLE |
 | [public.role](public.role.md)                                       | 8       |         | BASE TABLE |
@@ -52,6 +53,22 @@ erDiagram
   varchar_64_ entity_id
   varchar_40_ entity_type
   uuid id
+}
+"public.external_collaborator" {
+  varchar_160_ authentik_username
+  timestamp_with_time_zone created_at
+  varchar_32_ created_by
+  varchar_200_ display_name
+  varchar_200_ email
+  timestamp_with_time_zone expires_at
+  text__ group_refs
+  uuid id
+  timestamp_with_time_zone last_recertified_at
+  varchar_120_ name
+  text purpose
+  varchar_32_ sponsor_matricule
+  varchar_16_ status
+  varchar_20_ type
 }
 "public.identity" {
   boolean authentik_provisioned
