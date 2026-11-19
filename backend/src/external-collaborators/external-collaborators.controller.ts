@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request as ExpressRequest } from 'express';
 import type { AuthUser } from '../auth/oidc.strategy.js';
@@ -78,6 +78,23 @@ export class ExternalCollaboratorsController {
   @Post(':id/provision')
   provision(@Param('id', ParseUUIDPipe) id: string, @Req() req: ExpressRequest) {
     return this.provisioning.provision(id, actorOf(req));
+  }
+
+  /** Active collaborators expiring within `?days=` (default 30) — the renewal worklist (S028). */
+  @Get('due')
+  due(@Query('days') days?: string) {
+    const d = Number(days ?? 30);
+    return this.collaborators.listDueForRenewal(Number.isFinite(d) && d > 0 ? d : 30);
+  }
+
+  /** Renew an active engagement — extend the expiry (capped at the 180d ceiling), stamp recert (S028). */
+  @Post(':id/renew')
+  renew(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { days?: number },
+    @Req() req: ExpressRequest,
+  ) {
+    return this.collaborators.renew(id, actorOf(req), body?.days);
   }
 
   @Get()

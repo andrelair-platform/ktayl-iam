@@ -24,11 +24,11 @@ import {
 } from './external-collaborator.service.js';
 import { ExternalCollaboratorProvisioningService } from './external-collaborator-provisioning.service.js';
 
+import { EXPIRY_CEILING_DAYS, EXPIRY_DEFAULT_DAYS } from './constants.js';
+
 export type EcLeg = 'security' | 'sponsor';
 
-/** Hard ceiling on an engagement length (days) — the max any external access may be granted for. */
-export const EXPIRY_CEILING_DAYS = 180;
-export const EXPIRY_DEFAULT_DAYS = 90;
+export { EXPIRY_CEILING_DAYS, EXPIRY_DEFAULT_DAYS };
 
 export interface FileExternalCollaboratorInput
   extends Omit<CreateExternalCollaboratorInput, 'createdBy' | 'expiresAt'> {

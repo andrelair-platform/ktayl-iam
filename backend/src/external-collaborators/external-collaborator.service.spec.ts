@@ -80,3 +80,36 @@ describe('ExternalCollaboratorService.updateStatus', () => {
     );
   });
 });
+
+describe('ExternalCollaboratorService.renew', () => {
+  it('extends expiry + stamps recert on an active collaborator (capped at 180d) + audits', async () => {
+    const { svc, repo, audit } = makeService();
+    repo.findOne.mockResolvedValueOnce({ id: 'ec-1', status: 'active', expiresAt: new Date(), lastRecertifiedAt: null });
+    const out = await svc.renew('ec-1', ACTOR, 365);
+    const days = (out.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(days).toBeLessThanOrEqual(180.1);
+    expect(days).toBeGreaterThan(179);
+    expect(out.lastRecertifiedAt).toBeInstanceOf(Date);
+    expect(audit.record).toHaveBeenCalledWith(ACTOR, 'external_collaborator.renewed', 'external_collaborator', 'ec-1', expect.objectContaining({ days: 180 }));
+  });
+
+  it('refuses to renew a non-active collaborator (409)', async () => {
+    const { svc, repo } = makeService();
+    repo.findOne.mockResolvedValueOnce({ id: 'ec-1', status: 'expired' });
+    await expect(svc.renew('ec-1', ACTOR)).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('ExternalCollaboratorService.listDueForRenewal', () => {
+  it('surfaces active collaborators expiring within the window (incl. past)', async () => {
+    const { svc, repo } = makeService();
+    const soon = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    const far = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
+    repo.find.mockResolvedValueOnce([
+      { id: 'a', status: 'active', expiresAt: soon }, // within 30 → due
+      { id: 'b', status: 'active', expiresAt: far }, // beyond → not due
+    ]);
+    const due = await svc.listDueForRenewal(30);
+    expect(due.map((c) => c.id)).toEqual(['a']);
+  });
+});

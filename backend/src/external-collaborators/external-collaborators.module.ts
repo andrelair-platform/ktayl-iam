@@ -5,6 +5,7 @@ import { ExternalCollaboratorRequest } from './entities/external-collaborator-re
 import { ExternalCollaboratorService } from './external-collaborator.service.js';
 import { ExternalCollaboratorWorkflowService } from './external-collaborator-workflow.service.js';
 import { ExternalCollaboratorProvisioningService } from './external-collaborator-provisioning.service.js';
+import { ExternalCollaboratorSentinelService } from './external-collaborator-sentinel.service.js';
 import { ExternalCollaboratorsController } from './external-collaborators.controller.js';
 import { CatalogModule } from '../catalog/catalog.module.js';
 import { DirectoryModule } from '../directory/directory.module.js';
@@ -26,6 +27,7 @@ import { DirectoryModule } from '../directory/directory.module.js';
     ExternalCollaboratorService,
     ExternalCollaboratorWorkflowService,
     ExternalCollaboratorProvisioningService,
+    ExternalCollaboratorSentinelService,
   ],
   exports: [
     ExternalCollaboratorService,
