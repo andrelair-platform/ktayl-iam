@@ -255,6 +255,136 @@
       ]
     },
     {
+      "name": "public.external_collaborator",
+      "type": "BASE TABLE",
+      "columns": [
+        {
+          "name": "authentik_username",
+          "type": "varchar(160)",
+          "nullable": true
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "created_by",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "display_name",
+          "type": "varchar(200)",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "varchar(200)",
+          "nullable": false
+        },
+        {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "group_refs",
+          "type": "text[]",
+          "nullable": false,
+          "default": "'{}'::text[]"
+        },
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "last_recertified_at",
+          "type": "timestamp with time zone",
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "type": "varchar(120)",
+          "nullable": false
+        },
+        {
+          "name": "purpose",
+          "type": "text",
+          "nullable": false
+        },
+        {
+          "name": "sponsor_matricule",
+          "type": "varchar(32)",
+          "nullable": false
+        },
+        {
+          "name": "status",
+          "type": "varchar(16)",
+          "nullable": false,
+          "default": "'requested'::character varying"
+        },
+        {
+          "name": "type",
+          "type": "varchar(20)",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "external_collaborator_pkey",
+          "def": "CREATE UNIQUE INDEX external_collaborator_pkey ON public.external_collaborator USING btree (id)",
+          "table": "public.external_collaborator",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "uq_external_collaborator_name",
+          "def": "CREATE UNIQUE INDEX uq_external_collaborator_name ON public.external_collaborator USING btree (name)",
+          "table": "public.external_collaborator",
+          "columns": [
+            "name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "external_collaborator_pkey",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (id)",
+          "table": "public.external_collaborator",
+          "referenced_table": "",
+          "columns": [
+            "id"
+          ]
+        },
+        {
+          "name": "external_collaborator_status_check",
+          "type": "CHECK",
+          "def": "CHECK (((status)::text = ANY ((ARRAY['requested'::character varying, 'active'::character varying, 'expired'::character varying, 'disabled'::character varying, 'flagged'::character varying])::text[])))",
+          "table": "public.external_collaborator",
+          "referenced_table": "",
+          "columns": [
+            "status"
+          ]
+        },
+        {
+          "name": "external_collaborator_type_check",
+          "type": "CHECK",
+          "def": "CHECK (((type)::text = ANY ((ARRAY['contractor'::character varying, 'auditor'::character varying, 'broker'::character varying, 'partner'::character varying])::text[])))",
+          "table": "public.external_collaborator",
+          "referenced_table": "",
+          "columns": [
+            "type"
+          ]
+        }
+      ]
+    },
+    {
       "name": "public.identity",
       "type": "BASE TABLE",
       "columns": [

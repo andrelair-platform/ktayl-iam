@@ -14,6 +14,7 @@ import { WorkflowModule } from './workflow/workflow.module.js';
 import { AccessModule } from './access/access.module.js';
 import { LifecycleModule } from './lifecycle/lifecycle.module.js';
 import { ServiceAccountsModule } from './service-accounts/service-accounts.module.js';
+import { ExternalCollaboratorsModule } from './external-collaborators/external-collaborators.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { ServiceAccountsModule } from './service-accounts/service-accounts.modul
     AccessModule, // S006 — who-has-what + audit
     LifecycleModule, // S015/S016 — HR Joiner intake + workspace provisioning
     ServiceAccountsModule, // IGA-06/S021 — governed service/technical-account provisioning
+    ExternalCollaboratorsModule, // IGA-07/S025 — governed external-collaborator identities
   ],
   controllers: [AppController],
   providers: [AppService],
