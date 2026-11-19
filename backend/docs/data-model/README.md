@@ -7,7 +7,7 @@
 | [public.application](public.application.md)                                     | 7       |         | BASE TABLE |
 | [public.assignment](public.assignment.md)                                       | 10      |         | BASE TABLE |
 | [public.audit_log](public.audit_log.md)                                         | 7       |         | BASE TABLE |
-| [public.external_collaborator](public.external_collaborator.md)                 | 15      |         | BASE TABLE |
+| [public.external_collaborator](public.external_collaborator.md)                 | 16      |         | BASE TABLE |
 | [public.external_collaborator_request](public.external_collaborator_request.md) | 10      |         | BASE TABLE |
 | [public.identity](public.identity.md)                                           | 16      |         | BASE TABLE |
 | [public.request](public.request.md)                                             | 10      |         | BASE TABLE |
@@ -71,6 +71,7 @@ erDiagram
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
+  varchar_120_ supplier_ref
   varchar_20_ type
 }
 "public.external_collaborator_request" {

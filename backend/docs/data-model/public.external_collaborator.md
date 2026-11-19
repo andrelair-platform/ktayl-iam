@@ -18,6 +18,7 @@
 | purpose             | text                     |                                | false    |                                                                                 |         |         |
 | sponsor_matricule   | varchar(32)              |                                | false    |                                                                                 |         |         |
 | status              | varchar(16)              | 'requested'::character varying | false    |                                                                                 |         |         |
+| supplier_ref        | varchar(120)             |                                | true     |                                                                                 |         |         |
 | type                | varchar(20)              |                                | false    |                                                                                 |         |         |
 
 ## Constraints
@@ -57,6 +58,7 @@ erDiagram
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
+  varchar_120_ supplier_ref
   varchar_20_ type
 }
 "public.external_collaborator_request" {
