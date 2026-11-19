@@ -8,6 +8,7 @@ import { ExternalCollaboratorProvisioningService } from './external-collaborator
 import { ExternalCollaboratorEventPublisher } from './external-collaborator-event.publisher.js';
 import { ExternalCollaboratorSentinelService } from './external-collaborator-sentinel.service.js';
 import { ExternalCollaboratorsController } from './external-collaborators.controller.js';
+import { ServiceKeyGuard } from '../auth/service-key.guard.js';
 import { CatalogModule } from '../catalog/catalog.module.js';
 import { DirectoryModule } from '../directory/directory.module.js';
 
@@ -30,6 +31,7 @@ import { DirectoryModule } from '../directory/directory.module.js';
     ExternalCollaboratorProvisioningService,
     ExternalCollaboratorEventPublisher,
     ExternalCollaboratorSentinelService,
+    ServiceKeyGuard,
   ],
   exports: [
     ExternalCollaboratorService,

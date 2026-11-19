@@ -16,6 +16,7 @@
 | [010](#adr-010) | ~~**Collaborator ↔ procurement pay-link** (supplier_ref)~~ — **Superseded by [012](#adr-012)**: the person is a *worker*, not a supplier | **Superseded** | SA/TL |
 | [011](#adr-011) | **Event→n8n integration seam** (IAM emits `onboarded`; n8n writes the downstream system; IAM never calls it directly) — **target corrected by [012](#adr-012)** from ERPNext *Supplier* to ERPNext *non-payroll HR worker* | **Revised → 012** | SA/TL |
 | [012](#adr-012) | **Workforce engagement model**: ERPNext HR = SoR for engagement types (CDI/CDD/Alternance/Stage + **Prestataire/Freelance = non-payroll**) + grade (cadre/non-cadre) + salary + start/end dates; **external collaborators become non-payroll HR workers**; IAM mirrors engagement-type + dates and ties access-expiry to the engagement end | **Proposed** | SA/TL |
+| [013](#adr-013) | **n8n integration is webhook-driven (not NATS)**: n8n is webhook-native (no JetStream consumer), so IAM **also POSTs the signed onboarded event to an n8n Webhook** (the existing ERPNext→n8n pattern), keeping the NATS publish as a durable log; n8n binds back via a **service-key-guarded** writeback endpoint | **Proposed** | SA/TL |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -325,6 +326,44 @@ payroll to "pay" them* — illegal disguised employment; their pay is an invoice
 4. **n8n:** workflow IAM event → create non-payroll ERPNext worker → write `hr_worker_ref` back → notify; Vault
    ERPNext token + egress netpol `automation → erp`.
 5. **QA on dev → promote** the corrected flow (replacing the supplier_ref prod change).
+
+## ADR-013 — n8n integration is webhook-driven; bind-back is service-key-guarded (Step 4) {#adr-013}
+**Status: PROPOSED (for owner review) · 2026-11-19.** Refines ADR-012 Step 4 (how the `onboarded` event
+reaches n8n and how n8n writes the `hr_worker_ref` back).
+
+**Context.** ADR-012 emits `iam.external_collaborator.onboarded` to JetStream (`IAM_EVENTS`, live in prod) for
+n8n to create the non-payroll ERPNext worker. Discovery (2026-11-19) found **n8n cannot consume NATS**: zero
+community nodes installed, n8n core has no JetStream trigger — it is **webhook-native**, and the only existing
+integration is `allow-erp-to-n8n-webhook` (**ERPNext already drives n8n by HTTP webhook**). So the JetStream
+event has no n8n consumer.
+
+**Decision.**
+1. **Transport = webhook (owner-chosen).** IAM **also POSTs** the signed `onboarded` event to an **n8n Webhook**
+   node (`N8N_ONBOARD_WEBHOOK_URL`, config-gated → no-op if blank), mirroring the ERPNext→n8n pattern. The
+   **NATS publish is kept** as a durable event log / future-consumer seam (not removed). The POST is **HMAC-signed**
+   (`IAM-Signature`, same key as the NATS event) so n8n verifies authenticity. Best-effort — a webhook failure
+   never fails provisioning.
+2. **Bind-back auth = service key.** n8n writes the id back via `POST /collaborators/:id/hr-worker-ref`, which is
+   `@AdminOnly` (OIDC session) — a machine can't hold a session. Add a **`ServiceKeyGuard`**: the route is
+   `@Public()` + guarded by a constant-time check of the `X-IAM-Service-Key` header against `IAM_SERVICE_KEY`
+   (Vault→ESO). **Fail-closed** — blank key denies all, so the endpoint is inert until the secret is wired.
+   (`AdminGuard` is taught to skip `@Public` routes.) *Upgrade path:* swap for Authentik M2M client-credentials
+   + JWKS (the platform standard) when more machine callers appear — accepted simplification for one internal
+   endpoint now.
+3. **n8n workflow:** Webhook (verify `IAM-Signature`) → upsert ERPNext `Employee` (`employment_type` from firm:
+   set→Prestataire, blank→Freelance; **no Salary Structure**; `custom_agency_or_firm`=firm; `contract_end_date`=
+   endDate) keyed on `idempotencyKey`/email → `POST …/hr-worker-ref` with `X-IAM-Service-Key` → notify. Committed
+   as a versioned artifact in `integration/n8n/`.
+
+**Rejected.** (a) *NATS→webhook bridge* — a new component to run for one event. (b) *n8n community NATS node* —
+an unofficial dependency to trust/maintain + changes the n8n image. (c) *Authentik M2M for the writeback now* —
+heavier than warranted for one internal endpoint (IAM auth is session-based, no bearer/JWKS path yet).
+
+**Consequences.** IAM gains a small signed webhook-emit + a fail-closed service-key guard (both config-gated →
+safe to ship before secrets exist). Platform/owner wiring (Step 4 handoff): an **ERPNext API token** (service
+user) → Vault; the **`IAM_SERVICE_KEY`** + **n8n webhook URL** → Vault/ESO + n8n; **egress netpols**
+`automation→erp` and `automation→ktayl-iam(-prod)`; **import + activate** the n8n workflow. Boundary unchanged:
+**IAM emits + accepts its own field; n8n is the only ERPNext writer** (ADR-009).
 
 ### Refinements incorporated (owner review, 2026-11-19)
 

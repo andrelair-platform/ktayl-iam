@@ -1,0 +1,48 @@
+# ADR-013 Step 4 — egress for n8n (ns `automation`) to reach ERPNext + IAM + DNS.
+# Apply in minicloud-gitops (is/ or platform/security/network-policies/). The automation ns default-denies
+# INGRESS only today (no egress default-deny), so these are belt-and-braces + make the intent explicit/auditable.
+# If/when an egress default-deny lands on `automation`, these become load-bearing.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-n8n-egress-erp
+  namespace: automation
+spec:
+  podSelector: { matchLabels: { app: n8n } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: erp } }
+      ports:
+        - { protocol: TCP, port: 8080 }   # erpnext-nginx / gunicorn (adjust to the ERPNext svc port)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-n8n-egress-iam
+  namespace: automation
+spec:
+  podSelector: { matchLabels: { app: n8n } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ktayl-iam } }       # dev
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ktayl-iam-prod } }  # prod
+      ports:
+        - { protocol: TCP, port: 3000 }   # the IAM backend svc port (adjust if different)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-n8n-egress-dns
+  namespace: automation
+spec:
+  podSelector: { matchLabels: { app: n8n } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }

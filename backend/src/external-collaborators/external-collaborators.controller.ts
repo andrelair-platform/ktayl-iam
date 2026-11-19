@@ -8,12 +8,15 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request as ExpressRequest } from 'express';
 import type { AuthUser } from '../auth/oidc.strategy.js';
 import type { AppConfig } from '../config/configuration.js';
 import { AdminOnly } from '../auth/admin-only.decorator.js';
+import { Public } from '../auth/public.decorator.js';
+import { ServiceKeyGuard } from '../auth/service-key.guard.js';
 import { DecideDto } from '../workflow/dto/decide.dto.js';
 import { ExternalCollaboratorWorkflowService } from './external-collaborator-workflow.service.js';
 import { ExternalCollaboratorService } from './external-collaborator.service.js';
@@ -92,21 +95,21 @@ export class ExternalCollaboratorsController {
   }
 
   /**
-   * Bind the ERPNext **HR worker ref** (ADR-012) — the `HR-EMP-xxxxx` id of the non-payroll worker record
-   * **n8n** created for this collaborator on the `onboarded` event. n8n calls this (a scoped service
-   * principal) to write the id back; IAM never creates/writes the ERPNext record. Idempotent + audited.
+   * Bind the ERPNext **HR worker ref** (ADR-012/013) — the `HR-EMP-xxxxx` id of the non-payroll worker
+   * record **n8n** created for this collaborator on the `onboarded` event. A **machine** endpoint: `@Public()`
+   * (no human session) + `ServiceKeyGuard` (the `X-IAM-Service-Key` header, fail-closed). n8n calls it to
+   * write the id back; IAM never creates/writes the ERPNext record. Idempotent + audited.
    */
+  @Public()
+  @UseGuards(ServiceKeyGuard)
   @Post(':id/hr-worker-ref')
-  bindHrWorker(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: { hrWorkerRef?: string },
-    @Req() req: ExpressRequest,
-  ) {
+  bindHrWorker(@Param('id', ParseUUIDPipe) id: string, @Body() body: { hrWorkerRef?: string }) {
     const ref = (body?.hrWorkerRef ?? '').trim();
     if (!ref) {
       throw new BadRequestException('hrWorkerRef is required');
     }
-    return this.collaborators.setHrWorkerRef(id, ref, actorOf(req));
+    // The caller is the n8n integration authenticated by the service key — audited as such, not a human.
+    return this.collaborators.setHrWorkerRef(id, ref, 'service:n8n');
   }
 
   /** Active collaborators expiring within `?days=` (default 30) — the renewal worklist (S028). */
