@@ -7,7 +7,7 @@
 | [public.application](public.application.md)                                     | 7       |         | BASE TABLE |
 | [public.assignment](public.assignment.md)                                       | 10      |         | BASE TABLE |
 | [public.audit_log](public.audit_log.md)                                         | 7       |         | BASE TABLE |
-| [public.external_collaborator](public.external_collaborator.md)                 | 14      |         | BASE TABLE |
+| [public.external_collaborator](public.external_collaborator.md)                 | 15      |         | BASE TABLE |
 | [public.external_collaborator_request](public.external_collaborator_request.md) | 10      |         | BASE TABLE |
 | [public.identity](public.identity.md)                                           | 16      |         | BASE TABLE |
 | [public.request](public.request.md)                                             | 10      |         | BASE TABLE |
@@ -58,6 +58,7 @@ erDiagram
 }
 "public.external_collaborator" {
   varchar_160_ authentik_username
+  varchar_200_ company
   timestamp_with_time_zone created_at
   varchar_32_ created_by
   varchar_200_ display_name

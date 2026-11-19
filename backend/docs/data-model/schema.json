@@ -264,6 +264,11 @@
           "nullable": true
         },
         {
+          "name": "company",
+          "type": "varchar(200)",
+          "nullable": true
+        },
+        {
           "name": "created_at",
           "type": "timestamp with time zone",
           "nullable": false,

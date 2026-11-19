@@ -14,6 +14,8 @@ export interface CreateExternalCollaboratorInput {
   displayName: string;
   email: string;
   type: ExternalCollaboratorType;
+  /** The contractor firm; null/omitted = freelance. */
+  company?: string | null;
   sponsorMatricule: string;
   purpose: string;
   groupRefs: string[];
@@ -46,6 +48,7 @@ export class ExternalCollaboratorService {
         displayName: input.displayName,
         email: input.email,
         type: input.type,
+        company: input.company?.trim() || null,
         sponsorMatricule: input.sponsorMatricule,
         purpose: input.purpose,
         groupRefs: input.groupRefs,
@@ -62,6 +65,7 @@ export class ExternalCollaboratorService {
       {
         name: c.name,
         type: c.type,
+        company: c.company ?? 'freelance',
         sponsor: c.sponsorMatricule,
         groups: c.groupRefs,
         expiresAt: c.expiresAt?.toISOString() ?? null,

@@ -50,6 +50,18 @@ describe('ExternalCollaboratorService.create', () => {
     await expect(svc.create(INPUT)).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('captures the company when given, and records `freelance` when omitted', async () => {
+    const { svc, repo, audit } = makeService();
+    await svc.create({ ...INPUT, company: "Acme Pentest Ltd" });
+    expect(repo.create.mock.calls[0][0].company).toBe("Acme Pentest Ltd");
+    expect(audit.record.mock.calls[0][4]).toMatchObject({ company: "Acme Pentest Ltd" });
+
+    const { svc: svc2, repo: repo2, audit: audit2 } = makeService();
+    await svc2.create(INPUT); // no company
+    expect(repo2.create.mock.calls[0][0].company).toBeNull();
+    expect(audit2.record.mock.calls[0][4]).toMatchObject({ company: "freelance" });
+  });
+
   it('never stores a credential value (only the governance shape)', async () => {
     const { svc, repo } = makeService();
     await svc.create(INPUT);

@@ -51,6 +51,7 @@ erDiagram
 }
 "public.external_collaborator" {
   varchar_160_ authentik_username
+  varchar_200_ company
   timestamp_with_time_zone created_at
   varchar_32_ created_by
   varchar_200_ display_name

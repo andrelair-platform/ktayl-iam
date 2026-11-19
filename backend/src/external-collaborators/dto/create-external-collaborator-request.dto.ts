@@ -32,6 +32,12 @@ export class CreateExternalCollaboratorRequestDto {
   @IsIn(['contractor', 'auditor', 'broker', 'partner'])
   type!: 'contractor' | 'auditor' | 'broker' | 'partner';
 
+  /** The contractor firm they belong to. **Leave blank for a freelance** collaborator. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  company?: string;
+
   /** The accountable internal **sponsor** (matricule) — validated as an ACTIVE employee server-side. */
   @IsString()
   @Matches(/^\d{6}$/, { message: 'sponsorMatricule must be a 6-digit matricule' })
