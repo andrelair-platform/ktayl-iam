@@ -16,8 +16,6 @@ export interface CreateExternalCollaboratorInput {
   type: ExternalCollaboratorType;
   /** The contractor firm; null/omitted = freelance. */
   company?: string | null;
-  /** Pay-link (ADR-010): read-only ERPNext Supplier / procurement contract ref a paid contractor is paid against. */
-  supplierRef?: string | null;
   sponsorMatricule: string;
   purpose: string;
   groupRefs: string[];
@@ -51,7 +49,6 @@ export class ExternalCollaboratorService {
         email: input.email,
         type: input.type,
         company: input.company?.trim() || null,
-        supplierRef: input.supplierRef?.trim() || null,
         sponsorMatricule: input.sponsorMatricule,
         purpose: input.purpose,
         groupRefs: input.groupRefs,
@@ -69,7 +66,6 @@ export class ExternalCollaboratorService {
         name: c.name,
         type: c.type,
         company: c.company ?? 'freelance',
-        supplierRef: c.supplierRef ?? null,
         sponsor: c.sponsorMatricule,
         groups: c.groupRefs,
         expiresAt: c.expiresAt?.toISOString() ?? null,
@@ -92,6 +88,23 @@ export class ExternalCollaboratorService {
 
   findByName(name: string): Promise<ExternalCollaborator | null> {
     return this.repo.findOne({ where: { name } });
+  }
+
+  /**
+   * Bind the ERPNext **HR worker ref** (ADR-012) — the `HR-EMP-xxxxx` Employee id of the non-payroll worker
+   * record **n8n** created for this collaborator — back onto the row. Idempotent (re-binding the same ref is
+   * a no-op write); audited. IAM only stores the ref it is handed; it never creates/writes the ERPNext record.
+   */
+  async setHrWorkerRef(id: string, hrWorkerRef: string, actor: string): Promise<ExternalCollaborator> {
+    const c = await this.getById(id);
+    const ref = hrWorkerRef.trim();
+    if (c.hrWorkerRef === ref) return c;
+    c.hrWorkerRef = ref;
+    const saved = await this.repo.save(c);
+    await this.audit.record(actor, 'external_collaborator.hr_worker_bound', 'external_collaborator', id, {
+      hrWorkerRef: ref,
+    });
+    return saved;
   }
 
   list(): Promise<ExternalCollaborator[]> {

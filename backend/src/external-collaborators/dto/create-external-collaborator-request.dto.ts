@@ -32,21 +32,15 @@ export class CreateExternalCollaboratorRequestDto {
   @IsIn(['contractor', 'auditor', 'broker', 'partner'])
   type!: 'contractor' | 'auditor' | 'broker' | 'partner';
 
-  /** The contractor firm they belong to. **Leave blank for a freelance** collaborator. */
+  /**
+   * The external **firm** they belong to (the ESN). **Leave blank for a freelance** collaborator. ADR-012:
+   * this drives the ERPNext HR worker's `employment_type` (set → Prestataire, blank → Freelance) + the
+   * `custom_agency_or_firm` field. The person is a *worker*, not a supplier.
+   */
   @IsOptional()
   @IsString()
   @MaxLength(200)
   company?: string;
-
-  /**
-   * Pay-link (ADR-010): the finance/procurement **Supplier** (or contract) reference a **paid** contractor is
-   * paid against (ERPNext Buying / Procurement #31). Read-only here — IAM stores + surfaces it, never creates
-   * the finance record. Optional: prompted + soft-flagged for paid types, legitimately blank for an unpaid party.
-   */
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  supplierRef?: string;
 
   /** The accountable internal **sponsor** (matricule) — validated as an ACTIVE employee server-side. */
   @IsString()

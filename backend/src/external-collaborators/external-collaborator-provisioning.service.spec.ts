@@ -30,12 +30,14 @@ function makeService(override: any = REQUESTED) {
     createRecoveryLink: vi.fn(async () => 'https://auth.example/recovery/abc'),
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
+  const events = { emitOnboarded: vi.fn().mockResolvedValue(undefined) };
   const svc = new ExternalCollaboratorProvisioningService(
     collaborators as any,
     authentik as any,
     audit as any,
+    events as any,
   );
-  return { svc, collaborators, authentik, audit };
+  return { svc, collaborators, authentik, audit, events };
 }
 
 describe('ExternalCollaboratorProvisioningService', () => {
@@ -50,6 +52,23 @@ describe('ExternalCollaboratorProvisioningService', () => {
     const detail = audit.record.mock.calls.at(-1)![4];
     expect(detail.inviteIssued).toBe(true);
     expect(JSON.stringify(detail)).not.toContain('recovery/abc'); // the link value never reaches the audit log
+  });
+
+  it('emits the ADR-012 onboarded event after provisioning (engagementType from the firm)', async () => {
+    const { svc, events } = makeService({ ...REQUESTED, company: 'Acme Pentest Ltd' });
+    await svc.provision('ec-1', '100005');
+    expect(events.emitOnboarded).toHaveBeenCalledTimes(1);
+    const ev = events.emitOnboarded.mock.calls[0][0];
+    expect(ev).toMatchObject({
+      event: 'external_collaborator.onboarded',
+      idempotencyKey: 'ec-1',
+      engagementType: 'Prestataire',
+      firm: 'Acme Pentest Ltd',
+    });
+
+    const { svc: s2, events: e2 } = makeService({ ...REQUESTED, company: null }); // freelance
+    await s2.provision('ec-1', '100005');
+    expect(e2.emitOnboarded.mock.calls[0][0]).toMatchObject({ engagementType: 'Freelance', firm: null });
   });
 
   it('is idempotent: an already-active collaborator is a no-op', async () => {

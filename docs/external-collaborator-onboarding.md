@@ -24,7 +24,7 @@ back to ERPNext** — an external collaborator is an **IAM-only identity with no
 | `name` / `displayName` | the Authentik username to provision + the human-readable name |
 | `email` | contact / invite target |
 | `company` *(nullable)* | the **contractor firm** the external party belongs to — **`null` = freelance** (no firm) |
-| `supplierRef` *(nullable)* | **pay-link (ADR-010)** — a READ-ONLY reference to the finance/procurement **Supplier** (or contract) record a **paid** contractor is paid against (ERPNext Buying / Procurement #31). IAM stores + surfaces it, **never writes** the finance record. `null` = unlinked (soft-flagged for paid types) |
+| `hrWorkerRef` *(nullable)* | **HR worker ref (ADR-012)** — the canonical ERPNext **Employee** id (`HR-EMP-xxxxx`) of the *non-payroll HR worker* record **n8n** creates for this collaborator (`employment_type = Prestataire`/`Freelance`, no Salary Structure → never payroll) and binds back. IAM never writes ERPNext (ADR-009). `null` until bound. The person is a *worker*, not a supplier. (Supersedes the ADR-010 `supplierRef`.) |
 | `sponsorMatricule` | the accountable internal **employee = the manager who requests + owns the collaborator** (the collaborator is *attached* to them) — **validated as ACTIVE in ERPNext** (not terminated/unknown) |
 | `purpose` (text) | mandatory justification (audit reason) |
 | `groupRefs` (text[]) | the **scoped** entitlement — specific `GROUP_<x>`, never birthright-plus |
@@ -64,7 +64,15 @@ data is `company`.
 (firm vs freelance) for audit/DORA third-party context, without inventing a second owner relationship or
 making company a hard requirement that blocks a legitimate freelance engagement.
 
-### Enhancement decision — pay-link to the finance Supplier record (ADR-010, built 2026-11-19)
+### ⚠️ Superseded — the pay-link/supplier framing below is replaced by the engagement model (ADR-012, 2026-11-19)
+> The owner corrected the model: an external collaborator is a **worker** (employed by an ESN, or freelance),
+> **not a supplier** and **not our payroll employee**. See **ADR-012** (`architecture/adr/000-index.md#adr-012`):
+> ERPNext HR is the SoR for engagement types (CDI/CDD/Alternance/Stage + **Prestataire/Freelance = non-payroll**);
+> external collaborators become **non-payroll HR workers** in ERPNext (created by n8n on the `onboarded` event,
+> `hr_worker_ref` bound back); their **pay is a firm-level invoice** (AP), never payroll. The `supplier_ref`
+> field was **dropped → `hr_worker_ref`**. The section below is kept for history only.
+
+### ~~Enhancement decision — pay-link to the finance Supplier record (ADR-010, built 2026-11-19)~~ *(superseded by ADR-012)*
 **The request (owner):** *"when creating an external user of the IAM platform, does it also go to the RH
 system, because they need to be paid? A service/technical account does not need to go to the RH system."*
 
