@@ -1,7 +1,9 @@
 # External Collaborator Onboarding — backend epic (IGA-07)
 
-> **Status: DESIGN / SCOPED (for review) · 2026-11-19.** The backend capability that unblocks **Phase 4**
-> of the console redesign. Governed by [`operation-authorization-model.md`](./operation-authorization-model.md)
+> **Status: AS-BUILT · 2026-11-19.** Shipped as **IGA-07** — ADR-009 governance gate + stories **S025–S030**
+> (PRs #107–#111), all merged. The design below is the as-built contract (one deviation: the sponsor-Leaver
+> safety net is a **self-contained daily sentinel sweep**, not a one-shot JML hook — more robust, see S029).
+> The backend capability that now powers **Phase 4** Governed by [`operation-authorization-model.md`](./operation-authorization-model.md)
 > (*External collaborators*). Delivery path **B/C** (new boundary-crossing capability, identity + PII) →
 > the **architecture + security governance gate applies** before build (`bmad-compliance.md`).
 

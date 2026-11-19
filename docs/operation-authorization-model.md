@@ -109,8 +109,8 @@ governance, shaped like the service-account control but for a human:
 - **One-directional — never writes back to HR.** An external collaborator is an **IAM-only identity**; it
   **never triggers or writes back to ERPNext** and has **no HR/workforce record**. IAM *consumes* ERPNext
   (sponsor validity, Leaver events); it never creates HR data. (See *The HR boundary*.)
-- **Not** an HR operation, **not** employee self-service. *(Build status: designed here; backend not yet
-  implemented — follow-up epic on board #17.)*
+- **Not** an HR operation, **not** employee self-service. *(Build status: **SHIPPED** — IGA-07 / ADR-009 +
+  S025–S030, PRs #107–#111.)*
 
 ## Enforcement — capability flags, not a raw `isAdmin` boolean (DECIDED 2026-11-19)
 **One `Admin` tier is active now, but the console checks a *capability*, never a bare `isAdmin` scattered
