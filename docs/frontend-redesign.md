@@ -1,7 +1,7 @@
 # IAM Console — Frontend Redesign (design spec)
 
-> **Status: DESIGN (for review) · 2026-11-19.** The specification to **follow when implementing** the IAM
-> console redesign — written *before* the build so it's a clean follow-up. Authorization/personas are the
+> **Status: AS-BUILT · 2026-11-19.** All phases shipped — Phase 0 foundation + Phases 1–5 (PRs #94–#98) and
+> Phase 4 external collaborators (#111). Written before the build as a clean follow-up; now the as-built spec. Authorization/personas are the
 > companion [`operation-authorization-model.md`](./operation-authorization-model.md) (read it first — this
 > doc renders that model as UI). Design system = **shadcn/ui + Tailwind v4** (foundation scaffolded; see
 > *Phase 0*). Accessibility target = **RGAA** (axe-gated, like Retrieva).
@@ -113,7 +113,7 @@ Request access                                          Step 1 of 2 · pick a to
 The approvers are **shown by name** before submit (the employee sees who will decide). On submit → toast →
 lands on **My requests** with the new request's lifecycle stepper.
 
-### 5.3 External collaborators (admin — design only, not yet built)
+### 5.3 External collaborators (admin — BUILT, #111)
 Same lifecycle shape as service accounts, with the **governance fields** from the authorization model:
 **sponsor** (an *active internal employee*, `name · matricule`, picked from the ERPNext directory — a
 terminated matricule is not selectable), **purpose**, **scoped entitlement**, and an **expiry with a hard
