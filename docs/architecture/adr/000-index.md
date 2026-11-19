@@ -13,7 +13,9 @@
 | [007](#adr-007) | **Dual approval (four-eyes): manager + role owner** before any grant is provisioned | Proposed | SA/SEC |
 | [008](#adr-008) | **Matricule** = immutable 6-digit employee ID (from ERPNext) = Authentik username | Proposed | SA/TL |
 | [009](#adr-009) | **External collaborators** (IGA-07): governed human non-employee identities — sponsor + Security four-eyes, hard expiry, sponsor-Leaver safety net | **Accepted** | SA/SEC |
-| [010](#adr-010) | **Collaborator ↔ procurement pay-link**: a paid contractor references a finance Supplier record (read-only); IAM stays access-only, never writes the finance record | **Accepted** | SA/TL |
+| [010](#adr-010) | ~~**Collaborator ↔ procurement pay-link** (supplier_ref)~~ — **Superseded by [012](#adr-012)**: the person is a *worker*, not a supplier | **Superseded** | SA/TL |
+| [011](#adr-011) | **Event→n8n integration seam** (IAM emits `onboarded`; n8n writes the downstream system; IAM never calls it directly) — **target corrected by [012](#adr-012)** from ERPNext *Supplier* to ERPNext *non-payroll HR worker* | **Revised → 012** | SA/TL |
+| [012](#adr-012) | **Workforce engagement model**: ERPNext HR = SoR for engagement types (CDI/CDD/Alternance/Stage + **Prestataire/Freelance = non-payroll**) + grade (cadre/non-cadre) + salary + start/end dates; **external collaborators become non-payroll HR workers**; IAM mirrors engagement-type + dates and ties access-expiry to the engagement end | **Proposed** | SA/TL |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -186,4 +188,200 @@ boundary. (b) *No link at all* — leaves paid access untraceable to the payment
 Supplier/contract automation is a **Procurement (#31)** deliverable, not an IAM one; near-term IAM carries a
 reference + a soft "missing pay-link" flag. Build (if accepted): add `supplier_ref` (nullable) + migration;
 plumb through DTO/service/controller/workflow + audit; UI field ("Supplier / contract ref — required to pay a
-contractor") + the paid-type flag. Then QA + promote the complete flow together.
+contractor") + the paid-type flag. Then QA + promote the complete flow together. *The cross-system automation
+(verify/create the ERPNext Supplier, write the ref back) is **ADR-011**.*
+
+## ADR-011 — Pay-link ↔ ERPNext integration via n8n (event-driven; IAM stays access-only) {#adr-011}
+**Status: PROPOSED (for owner review) · 2026-11-19.**
+
+**Context.** ADR-010 shipped the read-only `supplierRef` pay-link but **deferred the actual ERPNext integration**
+(validate the ref / create the Supplier / write it back) as a Procurement (#31) follow-up. #31 doesn't exist yet
+(`ktayl-procurement` is unbuilt). The naive next step — an **ERPNext REST client inside the IAM NestJS backend** —
+would couple the governance platform to finance (an ERPNext credential + egress + SDK living *in IAM*) and erode
+the **ADR-009 "IAM never writes ERPNext"** boundary. But the integration *capability* already exists on the
+platform: **n8n** (ns `automation`), **ERPNext Buying** (ns `erp`, `/api/resource/Supplier`), and **IAM already
+speaks NATS JetStream** (it consumes `hr.lifecycle.>` via `HrLifecycleConsumer`; the `nats` client + connection
+pattern are in place).
+
+**Decision.** Do the integration **event-driven, with n8n as the integration layer** — *compose, don't build a
+new service, and don't couple IAM to ERPNext*:
+1. **IAM emits a domain event** `iam.external_collaborator.onboarded` to NATS JetStream when a **paid** collaborator
+   is provisioned (reusing IAM's existing NATS connection — a tiny publisher, not a new dependency). Payload:
+   collaborator id/name, type, company, sponsor matricule, and the existing `supplierRef` (nullable).
+2. **n8n consumes** the event and orchestrates ERPNext over its REST API:
+   - `supplierRef` **present** → GET the Supplier → verify it exists; notify IT/procurement on mismatch.
+   - `supplierRef` **absent** (paid type) → create a **draft Supplier** in ERPNext Buying (name from company/
+     displayName, a `contractor`/`freelance` supplier group) → then **write the new Supplier ID back to IAM**.
+3. **IAM is never the ERPNext caller.** The only writer to ERPNext is **n8n**. IAM only writes its **own**
+   `supplierRef` field, via a narrow `PATCH /collaborators/:id/supplier-ref` endpoint that n8n calls (a scoped
+   service principal). **ADR-009 holds** — IAM writes IAM; n8n writes ERPNext.
+4. Human notifications (IT / procurement) via n8n (Matrix / email).
+
+**Why n8n, now (not code-in-IAM, not wait-for-#31).** The "no procurement consumer" objection **dissolves**:
+**n8n + ERPNext Buying *is* the procurement capability** for now (the same compose-don't-build move as the API-
+management decision). IAM's contract is a **stable domain event** → the n8n workflow can later be replaced by a
+governed **ktayl-integration (#25)** flow or a real **Procurement (#31)** service **without touching IAM**. The
+mapping is visible/low-code (no code deploy to change a field map), and emitting one JetStream event is idiomatic
+for IAM.
+
+**Rejected.** (a) *ERPNext REST client inside the IAM backend* — couples IAM to finance, erodes ADR-009, puts a
+finance credential + egress in the governance platform. (b) *Wait for Procurement #31* — leaves the pay-link
+inert indefinitely; n8n delivers the value now at low cost. (c) *Synchronous validation on the request path* —
+makes IAM's request path depend on ERPNext uptime; the **async event + soft flag** is more resilient (the flag
+already covers the "unlinked" state).
+
+**Consequences.** IAM gains (i) a small event **publisher** on provision and (ii) a narrow **`supplier-ref`
+writeback** endpoint (writes only its own field, audited). The integration logic lives in a **versioned n8n
+workflow** (export the JSON to the repo). ERPNext needs an API token (Vault → n8n credential) + Supplier-create
+perms; an **egress netpol `automation → erp`**. The **event is the stable seam**; the boundary stays clean:
+**access (IAM) → integration (n8n) → finance SoR (ERPNext Buying)**. **Revisit trigger:** fold the n8n workflow
+into ktayl-integration #25 / procurement #31 when either matures (IAM unchanged — it only emits the event).
+
+**Build slices (on approval).**
+1. IAM — publish `iam.external_collaborator.onboarded` on provision (paid type) + unit test.
+2. IAM — `PATCH /collaborators/:id/supplier-ref` (scoped n8n service principal) + audit + test.
+3. n8n — workflow: NATS trigger → branch (verify | create Supplier) → ERPNext REST → writeback → notify; export
+   JSON to `ktayl-iam/integration/n8n/`.
+4. Platform — ERPNext API token → Vault → n8n credential; egress netpol `automation → erp`.
+5. QA on dev — emit a test event → Supplier created in ERPNext → ref written back → the "⚠ no payment record" flag
+   clears live. Then promote.
+
+> **Status note (2026-11-19): ADR-011's *target* is corrected by ADR-012** — the event→n8n seam is kept, but it
+> writes a **non-payroll HR worker** in ERPNext, not a Supplier. The person is a worker, not a vendor.
+
+## ADR-012 — Workforce engagement model (ERPNext HR as SoR; externals as non-payroll workers; IAM mirrors engagement + dates) {#adr-012}
+**Status: PROPOSED (for owner review) · 2026-11-19.** Revises **ADR-009** (externals now *do* get a workforce
+record), supersedes **ADR-010** (`supplier_ref` on the person is wrong), corrects **ADR-011**'s target.
+
+**Context.** Onboarding an external collaborator raised "do they go to the HR system — they need to be paid?".
+ADR-010/011 answered with a *finance Supplier* link, which **mis-modelled the person as a vendor**. The owner
+corrected it: an external collaborator is a **worker** who happens to be employed by **another firm (an ESN)**
+or is **freelance** — not a supplier, and not our payroll employee either. Two facts settle the design:
+- **"Paid" ≠ "salary".** A salary is what an *employer pays an employee* (with social charges). A prestataire is
+  **not our employee** → what we pay is an **invoice** (the ESN's, or the freelance's own), via **Accounts
+  Payable at the *firm* level** — never payroll. Putting them on payroll would be *salariat déguisé* (illegal).
+- **Engagement type, grade, salary and work dates are HR master data → ERPNext HR is the SoR**, not IAM. IAM's
+  `identity` is explicitly "IAM's own identity mirror; ERPNext stays the HR system of record." Today that mirror
+  holds only `offboard_date` — **no start date and no engagement type** (the gap the owner spotted).
+
+**Live state (grounded, 2026-11-19).** ERPNext HR has Employment Types **CDI · CDD · Alternance · Stage** but
+**no Prestataire/Freelance**; **cadre/non-cadre is not modelled** (designations are job titles); `relieving_date`/
+`contract_end_date` are unpopulated; 4 of 5 seed employees have a **NULL** `employment_type`; external
+collaborators exist **only in IAM**. Payroll is wired for CDI (`CDI Temps Plein Assurance`); the
+`mock-net-entreprises` service shows social-declaration is already in scope.
+
+**Decision.**
+1. **ERPNext HR = system of record** for engagement type, **grade (cadre/non-cadre)**, salary (employees only),
+   and **start/end dates**. IAM consumes a projection; it never owns this.
+2. **Engagement taxonomy** (one model, payroll flag is intrinsic):
+   | Engagement | Our employee? | Paid via | Payroll? | End date |
+   |---|---|---|---|---|
+   | **CDI** (cadre/non-cadre) | yes | salary | ✅ | none (open-ended) |
+   | **CDD** | yes | salary | ✅ | fixed |
+   | **Alternance** (apprenti/pro) | yes | salary (special) | ✅ | fixed |
+   | **Stage** | no (student) | *gratification* | ⚠️ not true payroll | fixed |
+   | **Prestataire** (ESN) | **no** | **ESN invoice (AP)** | ❌ | mission |
+   | **Freelance** | **no** | **own invoice (AP)** | ❌ | mission |
+   → add **Prestataire** + **Freelance** as ERPNext Employment Types; "non-payroll" is enforced by **assigning no
+   Salary Structure** (so they can never enter a payroll run), not by the label.
+3. **cadre/non-cadre = native ERPNext `Employee Grade`** (`Cadre`/`Non-cadre`), not a custom field — it's a
+   *statut* inside CDI/CDD, orthogonal to the engagement type.
+4. **Dates:** `date_of_joining` (start — everyone), `contract_end_date` (fixed-term + externals), `relieving_date`
+   (actual departure). CDI has no contract end. These are the HR truth; **IAM's access-expiry is derived from the
+   engagement end**, not invented.
+5. **External collaborators (IGA-07) become non-payroll HR workers in ERPNext** — settling the B1/B2 fork at **B2,
+   owned by HR**. They are created via **IAM's `iam.external_collaborator.onboarded` event → n8n** (ADR-011's seam,
+   **retargeted from Supplier to a non-payroll Employee**: `employment_type = Prestataire|Freelance`, no salary
+   structure, `contract_end_date = mission end`, their firm in `company`). **IAM never writes ERPNext directly**
+   (ADR-009 boundary holds — n8n is the writer); IAM stores the returned **HR worker ref** (replacing
+   `supplier_ref`). Their **pay stays a firm-level invoice** (Buying/AP), not IAM's and not payroll's concern.
+6. **IAM mirror + event extension:** the `hr.lifecycle` event and the `identity` mirror carry **engagement_type +
+   start_date + end_date**; **access-expiry = engagement end-date** (a CDD/Stage/Prestataire's access dies with the
+   mission; a CDI's doesn't).
+
+**Rejected.** (a) *`supplier_ref` on the person* — the collaborator is a worker, not a vendor (the ADR-010 error).
+(b) *Model engagement types / salary / dates in IAM* — ERPNext HR is the SoR; IAM mirroring HR master data would
+split the truth. (c) *cadre/non-cadre as a custom field* — `Employee Grade` is native. (d) *Put externals on
+payroll to "pay" them* — illegal disguised employment; their pay is an invoice.
+
+**Consequences.**
+- **ERPNext HR (#8):** add `Prestataire`+`Freelance` Employment Types; add `Cadre`/`Non-cadre` Employee Grades;
+  backfill `employment_type` on the 4 NULL seed employees; start using `contract_end_date`/`relieving_date`. No
+  Salary Structure for the non-payroll types.
+- **IAM (#17):** **drop `supplier_ref`** (shipped in ADR-010, nullable + unused) → add `hr_worker_ref` +
+  `engagement_type` + `start_date`/`end_date`; extend the `hr.lifecycle` event contract + the `identity` mirror;
+  derive access-expiry from the engagement end; **revise the external-collaborator UI** (remove the "⚠ no payment
+  record"/supplier field; show firm + engagement + dates). Retarget the (unbuilt) n8n workflow Supplier→HR worker.
+- **Boundary stays clean:** **HR SoR (ERPNext) → access (IAM) → money (Buying/AP at the firm level)**; IAM emits
+  events, n8n is the only ERPNext writer. **Revisit trigger:** fold the n8n workflow into ktayl-integration #25 /
+  a real HR-onboarding flow when it matures — IAM only emits the event.
+
+**Build sequence (on approval — document-first, nothing built yet).**
+1. **ERPNext HR config (#8):** Employment Types (+Prestataire/Freelance), Employee Grades (Cadre/Non-cadre), seed
+   backfill, date fields — a reviewable data/config change.
+2. **Event contract:** extend `hr.lifecycle` (+ the IAM `onboarded` event) with engagement_type + start + end.
+3. **IAM (#17):** migrate `supplier_ref`→`hr_worker_ref` (+ engagement_type/start/end on identity+collaborator);
+   expiry = engagement end; UI revision; tests.
+4. **n8n:** workflow IAM event → create non-payroll ERPNext worker → write `hr_worker_ref` back → notify; Vault
+   ERPNext token + egress netpol `automation → erp`.
+5. **QA on dev → promote** the corrected flow (replacing the supplier_ref prod change).
+
+### Refinements incorporated (owner review, 2026-11-19)
+
+**R0 — The directory hop is via Authentik, NOT ERPNext→IAM directly (topology correction).** IAM does **not**
+read users from ERPNext. **Authentik is the central directory** ("our Entra", ADR-001); IAM's user search is
+`GET /directory/users` → `AuthentikClient.listUsers()` → Authentik `/core/users/`. So the real chain is:
+```
+ERPNext HR (HR SoR) ──▶ Authentik (directory) ◀──listUsers / search── IAM ──groups──▶ Authentik (enforcement)
+                                                                     │
+  money ─▶ Buying / AP (firm-level invoice)        n8n writes ERPNext ◀┘ (externals only; IAM never writes ERPNext)
+```
+Consequence: **engagement_type + start/end + grade travel ERPNext → Authentik (as user attributes) and/or the
+`hr.lifecycle` event → IAM**; IAM reads the directory from **Authentik**, and its `identity` row stays a *mirror*.
+The ADR-012 diagram's "ERPNext ──▶ IAM" arrow is replaced by "ERPNext ──▶ Authentik ──▶ IAM(reads)".
+
+**R1 — Two birth-places, one loop-safe contract (SoR vs intake).** State *why* both arrows exist so no one wires
+an infinite event loop:
+- **Internal (CDI/CDD/Alternance/Stage):** **born in ERPNext HR** → provisioned into **Authentik** → `hr.lifecycle`
+  confirms/mirrors into IAM. IAM never writes these back to ERPNext.
+- **External (Prestataire/Freelance):** **born in IAM** (collaborator intake) → IAM provisions the **Authentik**
+  user + emits `iam.external_collaborator.onboarded` → **n8n creates the ERPNext `Employee`** (non-payroll) →
+  ERPNext assigns the canonical **`hr_worker_ref` (`HR-EMP-xxxxx`)** and emits `hr.lifecycle` **back** to IAM to
+  **bind the mirror** (confirm, not re-create).
+- **Loop guard (mandatory):** every n8n→ERPNext write carries an **idempotency key** (`iam_request_id`, fallback
+  `email`); the resulting external-origin `hr.lifecycle` event is recognised by that key as a **bind**, so IAM
+  does **not** re-provision/re-trigger. ERPNext upserts on the key (no duplicate Employee).
+
+**R2 — `Stage` is NON-payroll in ERPNext (decided now).** *Gratification de stage* needs a *bulletin* + DSN only
+above the statutory ceiling; building that in ERPNext means a lightweight Salary Structure + DSN wiring. For now
+(no real interns, DSN is `mock-net-entreprises`) **Stage carries no Salary Structure → excluded from Payroll
+Entry**, exactly like Prestataire; gratification, if ever real, is handled by the external accountant.
+**Revisit trigger:** a real intern + real DSN → build the Stage gratification structure then (need-first). So
+payroll-eligible = **CDI · CDD · Alternance** only; **Stage · Prestataire · Freelance = no Salary Structure**.
+
+**R3 — Renewal/extension is a first-class event (no re-provision churn).** ESN missions + freelance contracts get
+**extended** every 3–6 months. The `hr.lifecycle` contract gains an **`engagement.updated`** (extension) event
+that **updates `contract_end_date` in ERPNext and pushes the new access-expiry to IAM in place** — IAM extends
+`expiresAt` **without** a deprovision→reprovision cycle (the access identity + groups are untouched; only the
+expiry moves). A true end (no extension) still runs the normal expiry/leaver path.
+
+**R4 — Verdicts on the two open questions.**
+- **Keep externals in the ERPNext `Employee` master — no custom DocType.** `Employee` is already wired to Projects/
+  Timesheets/Expense Claims/Attendance/org-chart + user-linking + lifecycle hooks; `Employment Type` with **no
+  Salary Structure Assignment** cleanly excludes them from payroll while keeping those native integrations. A
+  custom DocType would rebuild permissions/linking/hooks from scratch.
+- **`Cadre`/`Non-cadre` = native `Employee Grade`, scoped to internal employees only.** It governs *forfait jours*,
+  *préavis*, prévoyance brackets — idiomatic as `Employee Grade`. **HR validation leaves `grade` NULL for
+  Prestataire/Freelance/Stage** so statutory headcount/cadre reports aren't polluted.
+
+**R5 — Firm visibility without conflating entities.** Add a custom field **`custom_agency_or_firm`** on `Employee`
+(**Data**, or an optional **Link to the AP `Supplier`** for the ESN — read-only/informational) so HR/IT see which
+ESN a `Prestataire` belongs to **without** making the person a Supplier. The `company` field on the IAM
+collaborator maps to this.
+
+### Step-1 execution list (ERPNext HR config — reviewable, no code)
+- `Employment Type`: **+ `Prestataire`, + `Freelance`** (CDI/CDD/Alternance/Stage already exist).
+- `Employee Grade`: **+ `Cadre`, + `Non-cadre`** (internal-only; NULL for Prestataire/Freelance/Stage).
+- `Employee` custom field **`custom_agency_or_firm`** (Data or Link→Supplier, read-only/informational).
+- **Backfill** the 4 seed employees' NULL `employment_type`; verify `contract_end_date`/`relieving_date` behaviour.
+- Confirm **no Salary Structure** is attached to Stage/Prestataire/Freelance (payroll-excluded).
