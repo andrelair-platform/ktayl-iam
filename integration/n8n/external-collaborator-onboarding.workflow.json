@@ -2,11 +2,43 @@
   "id": "iamOnboardAdr013",
   "name": "external-collaborator → ERPNext non-payroll HR worker (ADR-013)",
   "nodes": [
-    { "parameters": { "httpMethod": "POST", "path": "iam-collaborator-onboarded", "responseMode": "onReceived", "responseCode": 200, "options": {} },
-      "id": "11111111-1111-1111-1111-111111111111", "name": "Webhook (onboarded)", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240,300], "webhookId": "iam-collaborator-onboarded" },
-    { "parameters": { "mode": "runOnceForAllItems", "jsCode": "// ADR-013: create the non-payroll ERPNext HR worker for an onboarded external collaborator, then\n// bind the HR-EMP id back into IAM. n8n is the only ERPNext writer (ADR-009). Uses this.helpers.httpRequest\n// (robust vs templated HTTP nodes). ERPNext gender/DOB made non-mandatory for externals; DOJ = today.\nconst ev = $input.first().json.body || $input.first().json;\nconst auth = 'token ' + $env.ERPNEXT_API_KEY + ':' + $env.ERPNEXT_API_SECRET;\nconst H = { Authorization: auth, 'content-type': 'application/json' };\nconst emp = await this.helpers.httpRequest({ method:'POST', url:'https://erp.devandre.sbs/api/resource/Employee', headers:H, body:{ first_name: ev.displayName, employment_type: ev.engagementType, company:'Ktayl Solutions', status:'Active', date_of_joining: new Date().toISOString().slice(0,10), custom_agency_or_firm: ev.firm||'', custom_iam_collaborator_id: ev.idempotencyKey }, json:true, skipSslCertificateValidation:true });\nconst hrName = emp.data.name;\nawait this.helpers.httpRequest({ method:'POST', url:'https://iam-dev.10.0.0.200.nip.io/api/collaborators/' + ev.collaboratorId + '/hr-worker-ref', headers:{ 'X-IAM-Service-Key': $env.IAM_SERVICE_KEY, 'content-type':'application/json' }, body:{ hrWorkerRef: hrName }, json:true, skipSslCertificateValidation:true });\nreturn [{ json: { ok:true, hrWorkerRef: hrName, collaboratorId: ev.collaboratorId } }];" },
-      "id": "22222222-2222-2222-2222-222222222222", "name": "Create worker + bind", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [520,300] }
+    {
+      "parameters": {
+        "content": "## External collaborator → ERPNext non-payroll HR worker\n**ADR-012 / ADR-013 / ADR-013b** · docs: `ktayl-iam/integration/n8n/README.md`\n\n**Trigger:** IAM POSTs the signed `onboarded` event when an external collaborator is provisioned.\n\n**Flow (the Code node):**\n1. **Verify** the `IAM-Signature` HMAC (`HMAC-SHA256(JSON.stringify(body), HR_LIFECYCLE_SIGNING_KEY)`) — a forged signature stops the run.\n2. **Idempotency:** GET the ERPNext `Employee` by `custom_iam_collaborator_id` and reuse it; only create if absent.\n3. **Create** the non-payroll `Employee` (`employment_type` from the firm → *Prestataire*/*Freelance*, **no Salary Structure** → never payroll).\n4. **Bind** the `HR-EMP-xxxxx` id back into IAM at **`ev.iamCallbackBaseUrl`** (dev or prod — one n8n serves both) via `X-IAM-Service-Key`.\n\n**Boundary:** IAM emits; **n8n is the only ERPNext writer** (ADR-009). The person is a *worker*, not a supplier.\n\n**Needs** (envFrom Vault→ESO `n8n-iam-integration` + `n8n-hr-glpi`): `ERPNEXT_API_KEY`/`SECRET`, `IAM_SERVICE_KEY`, `HR_LIFECYCLE_SIGNING_KEY`.",
+        "height": 400,
+        "width": 540,
+        "color": 4
+      },
+      "id": "99999999-9999-9999-9999-999999999999",
+      "name": "About this workflow",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [150, -160]
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "iam-collaborator-onboarded", "responseMode": "onReceived", "responseCode": 200, "options": {} },
+      "id": "11111111-1111-1111-1111-111111111111",
+      "name": "Webhook (onboarded)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "iam-collaborator-onboarded"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ADR-013/013b: verify the IAM-Signature, idempotently create the non-payroll ERPNext HR worker, and bind\n// the HR-EMP id back to the EMITTING IAM (ev.iamCallbackBaseUrl). n8n is the only ERPNext writer (ADR-009).\nconst crypto = require('crypto');\nconst whk = $('Webhook (onboarded)').first().json;\nconst ev = whk.body;\nconst hdr = whk.headers || {};\nconst sig = hdr['iam-signature'] || hdr['IAM-Signature'] || '';\nconst key = $env.HR_LIFECYCLE_SIGNING_KEY || '';\nif (key) {\n  const want = crypto.createHmac('sha256', key).update(JSON.stringify(ev), 'utf8').digest('hex');\n  if (want !== sig) throw new Error('bad IAM-Signature');\n}\nconst iamBase = ev.iamCallbackBaseUrl || 'https://iam-dev.10.0.0.200.nip.io';\nconst auth = 'token ' + $env.ERPNEXT_API_KEY + ':' + $env.ERPNEXT_API_SECRET;\nconst H = { Authorization: auth, 'content-type': 'application/json' };\nconst filt = encodeURIComponent(JSON.stringify([['custom_iam_collaborator_id', '=', ev.idempotencyKey]]));\nconst found = await this.helpers.httpRequest({ method:'GET', url:'https://erp.devandre.sbs/api/resource/Employee?filters=' + filt, headers:H, json:true, skipSslCertificateValidation:true });\nlet hrName;\nif (found.data && found.data.length) { hrName = found.data[0].name; }\nelse {\n  const emp = await this.helpers.httpRequest({ method:'POST', url:'https://erp.devandre.sbs/api/resource/Employee', headers:H, body:{ first_name: ev.displayName, employment_type: ev.engagementType, company:'Ktayl Solutions', status:'Active', date_of_joining: new Date().toISOString().slice(0,10), custom_agency_or_firm: ev.firm||'', custom_iam_collaborator_id: ev.idempotencyKey }, json:true, skipSslCertificateValidation:true });\n  hrName = emp.data.name;\n}\nawait this.helpers.httpRequest({ method:'POST', url: iamBase + '/api/collaborators/' + ev.collaboratorId + '/hr-worker-ref', headers:{ 'X-IAM-Service-Key': $env.IAM_SERVICE_KEY, 'content-type':'application/json' }, body:{ hrWorkerRef: hrName }, json:true, skipSslCertificateValidation:true });\nreturn [{ json: { ok:true, hrWorkerRef: hrName, boundTo: iamBase } }];"
+      },
+      "id": "22222222-2222-2222-2222-222222222222",
+      "name": "Verify + create + bind",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    }
   ],
-  "connections": { "Webhook (onboarded)": { "main": [[{ "node": "Create worker + bind", "type": "main", "index": 0 }]] } },
-  "settings": { "executionOrder": "v1" }, "active": true
+  "connections": {
+    "Webhook (onboarded)": { "main": [[{ "node": "Verify + create + bind", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": true
 }

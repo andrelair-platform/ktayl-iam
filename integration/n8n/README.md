@@ -78,13 +78,16 @@ Body is **canonical JSON** (sorted keys); verify `IAM-Signature` = `HMAC_SHA256(
 - **n8n reaches ERPNext/IAM via the `erp.devandre.sbs` / `iam-dev.10.0.0.200.nip.io` ingress** with
   `skipSslCertificateValidation` (minicloud CA); the `automation` ns default-denies ingress but egress is open.
 
-### Remaining (prod + hardening)
-- [ ] **Prod enablement** — needs the event to carry the IAM callback base-URL (dev/prod routing); prod
-      `N8N_ONBOARD_WEBHOOK_URL` is intentionally blank until then.
-- [ ] **Idempotency on retry** — the unique `custom_iam_collaborator_id` prevents duplicates (a re-fire `417`s the
-      create); add a GET-first-then-bind path if re-binding on retry is wanted.
-- [ ] **Signature verification** in the workflow (the `IAM-Signature` HMAC) — currently the netpol restricts the
-      caller; add the HMAC check for defence-in-depth.
+### Hardening + prod enablement (ADR-013b) — ✅ DONE + QA-verified (2026-11-20)
+- [x] **Prod routing** — the event carries **`iamCallbackBaseUrl`** (IAM stamps its own env's base URL from
+      `IAM_CALLBACK_BASE_URL`); the workflow binds back to it (dev→dev IAM, prod→prod IAM — one n8n, both envs).
+      Verified: `boundTo` reflects the event's base-URL. Prod IAM gets `N8N_ONBOARD_WEBHOOK_URL` + the prod
+      callback URL + a netpol `ktayl-iam-prod → n8n`.
+- [x] **Idempotency (GET-first)** — the workflow looks up the worker by `custom_iam_collaborator_id` and reuses
+      it; only creates if absent. Verified: a re-fire returns the **same** `HR-EMP-xxxxx` (no `417` duplicate).
+- [x] **HMAC verification** — the Code node recomputes `HMAC-SHA256(JSON.stringify(body), HR_LIFECYCLE_SIGNING_KEY)`
+      and compares the `IAM-Signature` header. Verified: good-sig → 200, **forged sig → 500 (rejected)**. IAM signs
+      this event with `JSON.stringify` (not canonicalJson) so n8n can reproduce the bytes from the parsed body.
 
 See `netpol-automation-egress.yaml` for the (optional, egress-hardening) manifests; the load-bearing one applied
 was `is/workplace/n8n/07-netpol-iam-to-n8n.yaml` (ingress IAM→n8n).
