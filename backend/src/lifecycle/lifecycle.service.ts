@@ -25,8 +25,15 @@ export interface LifecycleEvent {
     department?: string | null;
     entity?: string | null;
     country?: string | null;
+    /** ADR-014 — ERPNext engagement type (CDI/CDD/Alternance/Stage). Optional (older producers omit it). */
+    employment_type?: string | null;
+    /** ADR-014 — the fixed-term contract end (ERPNext `contract_end_date`). Optional; drives access-expiry. */
+    contract_end_date?: string | null;
   };
 }
+
+/** ERPNext engagement types that are FIXED-TERM — they carry a contract end that caps access (ADR-014). */
+const FIXED_TERM_TYPES = new Set(['CDD', 'Alternance', 'Stage']);
 
 /** today as YYYY-MM-DD (UTC) — the boundary for the "revoke the day AFTER the leave date" rule. */
 function todayStr(): string {
@@ -82,6 +89,11 @@ export class LifecycleService {
     id.entity = s.entity ?? id.entity ?? null;
     id.country = s.country ?? id.country ?? null;
     id.job = s.job ?? id.job ?? null;
+    // ADR-014 — mirror the engagement. Update ONLY when the field is PRESENT in the event (an older
+    // producer omits it → keep existing). A null value is meaningful (e.g. a CDD→CDI conversion clears the
+    // contract end → no more scheduled expiry), so distinguish undefined (absent) from null (sent-as-empty).
+    if (s.employment_type !== undefined) id.employmentType = s.employment_type ?? null;
+    if (s.contract_end_date !== undefined) id.contractEndDate = s.contract_end_date ?? null;
     id.status = 'active';
     id.lastEventAt = ev.occurred_at ? new Date(ev.occurred_at) : new Date();
 
@@ -129,6 +141,18 @@ export class LifecycleService {
     this.log.log(
       `${ev.event} ${s.matricule} (${id.fullName}) → email=${id.email} mailbox=${id.mailboxProvisioned} authentik=${id.authentikProvisioned}`,
     );
+
+    // ADR-014 catch-up: a fixed-term engagement whose contract end is ALREADY past (e.g. a mover backdating
+    // the end) → revoke now rather than wait for the daily sweep (mirrors the leaver catch-up).
+    if (
+      id.contractEndDate &&
+      id.contractEndDate < todayStr() &&
+      FIXED_TERM_TYPES.has(id.employmentType ?? '') &&
+      !id.deprovisionedAt
+    ) {
+      this.log.log(`contract-end (catch-up) ${s.matricule} → ended ${id.contractEndDate}, revoking now`);
+      await this.revokeAccess(id);
+    }
   }
 
   /**
@@ -160,10 +184,24 @@ export class LifecycleService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_2AM, { name: 'iam-leaver-sweep' })
   async processScheduledLeavers(): Promise<void> {
-    const due = await this.identities.find({
-      where: { status: 'leaving', offboardDate: LessThan(todayStr()) },
+    const today = todayStr();
+    // (a) scheduled leavers — a Leaver event set status=leaving + offboard_date (S017).
+    const leavers = await this.identities.find({
+      where: { status: 'leaving', offboardDate: LessThan(today) },
     });
-    if (due.length) this.log.log(`leaver sweep: ${due.length} due for revocation`);
+    // (b) ADR-014 — fixed-term employees whose CONTRACT END has passed but who are still active (no Leaver
+    // event fired). `contract_end_date < today` excludes NULLs (CDI/open-ended never match); the
+    // FIXED_TERM_TYPES guard is defence-in-depth so a stray CDI contract date can never revoke. A renewal
+    // moved the date earlier. Same revocation path as a leaver.
+    const contractEnded = (
+      await this.identities.find({ where: { status: 'active', contractEndDate: LessThan(today) } })
+    ).filter((id) => FIXED_TERM_TYPES.has(id.employmentType ?? ''));
+    const due = [...leavers, ...contractEnded];
+    if (due.length) {
+      this.log.log(
+        `access-expiry sweep: ${leavers.length} scheduled leaver(s) + ${contractEnded.length} contract-end due for revocation`,
+      );
+    }
     for (const id of due) await this.revokeAccess(id);
   }
 

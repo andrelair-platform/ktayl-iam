@@ -11,7 +11,18 @@ function fakeRepo() {
     findOne: vi.fn(async ({ where }: any) =>
       rows.find((r) => (where.matricule ? r.matricule === where.matricule : r.email === where.email)) ?? null,
     ),
-    find: vi.fn(async () => [...rows]),
+    // respects the where filter (equality + a TypeORM LessThan operator on date columns) so the
+    // access-expiry sweep can be tested precisely.
+    find: vi.fn(async (opts: any = {}) => {
+      const where = opts.where;
+      if (!where) return [...rows];
+      return rows.filter((r: any) =>
+        Object.entries(where).every(([k, v]: any) => {
+          if (v && typeof v === 'object' && v.type === 'lessThan') return r[k] != null && r[k] < v.value;
+          return r[k] === v;
+        }),
+      );
+    }),
     save: vi.fn(async (r: Identity) => {
       const i = rows.findIndex((x) => x.matricule === r.matricule);
       if (i >= 0) rows[i] = r;
@@ -183,5 +194,62 @@ describe('LifecycleService joiner', () => {
     expect(id.matricule).toBe('100004'); // identity still persisted
     expect(id.mailboxProvisioned).toBeFalsy(); // leg failed → flag not set (retry on redelivery)
     expect(authentik.ensureUser).toHaveBeenCalled(); // other legs still ran
+  });
+});
+
+describe('ADR-014 — engagement mirroring + contract-end access-expiry', () => {
+  const ftJoiner = (matricule: string, type: string, endDate: string | null): LifecycleEvent => ({
+    event: 'joiner',
+    occurred_at: '2026-10-05T10:00:00+00:00',
+    subject: { matricule, employee_name: `Emp ${matricule}`, employment_type: type, contract_end_date: endDate },
+  });
+
+  it('a fixed-term joiner (CDD + future end) mirrors employment_type + contract_end_date, NOT revoked', async () => {
+    const repo = fakeRepo();
+    const { svc, authentik } = makeService(repo);
+    await svc.handle(ftJoiner('200001', 'CDD', daysFromNow(90)));
+    const id = repo.rows[0];
+    expect(id.employmentType).toBe('CDD');
+    expect(id.contractEndDate).toBe(daysFromNow(90));
+    expect(id.status).toBe('active');
+    expect(authentik.disableUser).not.toHaveBeenCalled(); // contract not yet ended
+  });
+
+  it('a CDI joiner gets NO scheduled expiry (contract_end_date null)', async () => {
+    const repo = fakeRepo();
+    const { svc } = makeService(repo);
+    await svc.handle(ftJoiner('200002', 'CDI', null));
+    expect(repo.rows[0].employmentType).toBe('CDI');
+    expect(repo.rows[0].contractEndDate).toBeNull();
+  });
+
+  it('catch-up: a mover backdating a fixed-term contract end (past) revokes immediately', async () => {
+    const repo = fakeRepo();
+    const { svc, authentik } = makeService(repo);
+    await svc.handle(ftJoiner('200003', 'Stage', daysFromNow(30))); // active intern
+    await svc.handle({ event: 'mover', subject: { matricule: '200003', employment_type: 'Stage', contract_end_date: daysFromNow(-1) } });
+    expect(authentik.disableUser).toHaveBeenCalledWith('200003');
+    expect(repo.rows[0].status).toBe('left');
+  });
+
+  it('a CDD→CDI conversion (contract_end_date null) CLEARS the scheduled expiry', async () => {
+    const repo = fakeRepo();
+    const { svc } = makeService(repo);
+    await svc.handle(ftJoiner('200004', 'CDD', daysFromNow(60)));
+    await svc.handle({ event: 'mover', subject: { matricule: '200004', employment_type: 'CDI', contract_end_date: null } });
+    expect(repo.rows[0].employmentType).toBe('CDI');
+    expect(repo.rows[0].contractEndDate).toBeNull();
+  });
+
+  it('the daily sweep revokes a fixed-term employee past contract end, but NOT a CDI (fixed-term guard)', async () => {
+    const repo = fakeRepo();
+    const { svc, authentik } = makeService(repo);
+    await svc.handle(ftJoiner('200005', 'CDD', daysFromNow(30))); // active CDD, end in the future
+    repo.rows[0].contractEndDate = daysFromNow(-1); // simulate the end passing
+    await svc.handle(ftJoiner('200006', 'CDI', null)); // a CDI
+    repo.rows[1].contractEndDate = daysFromNow(-1); // a STRAY past date on a CDI — must NOT revoke
+    await svc.processScheduledLeavers();
+    expect(authentik.disableUser).toHaveBeenCalledWith('200005');
+    expect(authentik.disableUser).not.toHaveBeenCalledWith('200006');
   });
 });

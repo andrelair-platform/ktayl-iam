@@ -9,7 +9,7 @@
 | [public.audit_log](public.audit_log.md)                                         | 7       |         | BASE TABLE |
 | [public.external_collaborator](public.external_collaborator.md)                 | 16      |         | BASE TABLE |
 | [public.external_collaborator_request](public.external_collaborator_request.md) | 10      |         | BASE TABLE |
-| [public.identity](public.identity.md)                                           | 16      |         | BASE TABLE |
+| [public.identity](public.identity.md)                                           | 18      |         | BASE TABLE |
 | [public.request](public.request.md)                                             | 10      |         | BASE TABLE |
 | [public.role](public.role.md)                                                   | 8       |         | BASE TABLE |
 | [public.service_account](public.service_account.md)                             | 12      |         | BASE TABLE |
@@ -88,11 +88,13 @@ erDiagram
 }
 "public.identity" {
   boolean authentik_provisioned
+  date contract_end_date
   varchar_80_ country
   timestamp_with_time_zone created_at
   varchar_120_ department
   timestamp_with_time_zone deprovisioned_at
   varchar_190_ email
+  varchar_40_ employment_type
   varchar_120_ entity
   varchar_160_ full_name
   varchar_64_ initial_mailbox_password

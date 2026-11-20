@@ -34,6 +34,21 @@ export class Identity {
   job!: string | null;
 
   /**
+   * The ERPNext **engagement type** (ADR-014): CDI · CDD · Alternance · Stage. Mirrored from HR; null for
+   * older events. CDI = open-ended; the others are **fixed-term** and carry a `contract_end_date`.
+   */
+  @Column({ name: 'employment_type', type: 'varchar', length: 40, nullable: true })
+  employmentType!: string | null;
+
+  /**
+   * The ERPNext **contract end date** of a fixed-term engagement (ADR-014). When set + passed, the daily
+   * sweep revokes access at contract end (access-expiry = contract end) — the same sweep that handles the
+   * Leaver `offboard_date`. Null = no scheduled end (CDI / open-ended). A renewal moves this date.
+   */
+  @Column({ name: 'contract_end_date', type: 'date', nullable: true })
+  contractEndDate!: string | null;
+
+  /**
    * Lifecycle status: active (joiner/mover) | leaving (leaver event received, revocation SCHEDULED
    * for the day after offboardDate) | left (revocation applied — all access removed). S017.
    */
