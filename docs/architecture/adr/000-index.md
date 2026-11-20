@@ -18,7 +18,7 @@
 | [012](#adr-012) | **Workforce engagement model**: ERPNext HR = SoR for engagement types (CDI/CDD/Alternance/Stage + **Prestataire/Freelance = non-payroll**) + grade (cadre/non-cadre) + salary + start/end dates; **external collaborators become non-payroll HR workers**; IAM mirrors engagement-type + dates and ties access-expiry to the engagement end | **Proposed** | SA/TL |
 | [013](#adr-013) | **n8n integration is webhook-driven (not NATS)**: n8n is webhook-native (no JetStream consumer), so IAM **also POSTs the signed onboarded event to an n8n Webhook** (the existing ERPNext→n8n pattern), keeping the NATS publish as a durable log; n8n binds back via a **service-key-guarded** writeback endpoint | **Proposed** | SA/TL |
 | [014](#adr-014) | **Internal-employee engagement mirroring + contract-end access-expiry**: mirror `employment_type` + `contract_end_date` into the IAM identity; a fixed-term engagement (CDD/Alternance/Stage) ties its **access-expiry to the contract end** by **reusing the existing leaver sweep** (scheduled revocation), not a new sentinel. **BUILT + LIVE on dev+prod (2026-11-20)** — IAM mirror + catch-up revoke + extended sweep (ktayl-iam #124) + ERPNext producer emit (minicloud-erpnext #29); end-to-end prod QA green. | **Accepted · built · live** | SA/TL |
-| [015](#adr-015) | **Workplace birthright for external collaborators**: an external collaborator, at provision time, gets the **same workplace tier as an employee** — added to the birthright `Workplace Users` group + a company mailbox (`firstname.lastname@devandre.sbs`) — while **business/LOB apps stay request→dual-approval**. Relaxes the ADR-009 "never birthright-plus" rule for the *workplace* tier only; least-privilege is preserved at the **data** tier. Time-boxed by the external's hard expiry (ADR-009/012). **n8n unchanged (ERPNext worker only); mailbox+group = IAM-direct.** | **Accepted** | SA/SEC |
+| [015](#adr-015) | **Workplace birthright for external collaborators**: an external collaborator, at provision time, gets the **same workplace tier as an employee** — added to the birthright `Workplace Users` group + a company mailbox (`firstname.lastname@devandre.sbs`) — while **business/LOB apps stay request→dual-approval**. Relaxes the ADR-009 "never birthright-plus" rule for the *workplace* tier only; least-privilege is preserved at the **data** tier. Time-boxed by the external's hard expiry (ADR-009/012). **n8n unchanged (ERPNext worker only); mailbox+group = IAM-direct.** **BUILT + LIVE dev+prod (ktayl-iam #126).** | **Accepted · built · live** | SA/SEC |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -494,8 +494,16 @@ the first fixed-term hire. **As built (2026-11-20):**
   → `ACCESS REVOKED`, `status=left`. HMAC verified, DTO mapped, both paths exercised; disposable identity cleaned up.
 
 ## ADR-015 — Workplace birthright for external collaborators {#adr-015}
-**Status: ACCEPTED · 2026-11-20 — owner-approved after a code-mapping review (below); implementation in
-progress.** *Document-first: the decision was written + approved before any code.*
+**Status: ACCEPTED · BUILT · LIVE on dev + prod · 2026-11-20 — owner-approved after a code-mapping review
+(below).** *Document-first: the decision was written + approved before any code.* **As-built (ktayl-iam #126):**
+a shared **`WorkplaceAccessService`** (+ `WorkplaceModule`) now owns the workplace tier for BOTH the HR Joiner
+and external provisioning — cross-table email allocation (`identity` + `external_collaborator`), mailbox
+provision, birthright-group grant, mailbox disable; `external_collaborator` gained `workplace_email` (unique) +
+`mailbox_provisioned` (migration `1727001800000`); the sentinel suspend disables the mailbox too (leaver
+parity). 12 new tests (179 green). Migration + healthy boot verified on dev + prod; the employee Joiner (which
+now shares the exact same mailbox+group path) runs live, so the workplace-grant mechanics are already
+prod-proven. Remaining acceptance: a full external-provision exercised against a provisioning-configured
+Authentik+Stalwart (dev is not configured for it) — strongly de-risked by the shared-path proof.
 
 **Reviewed against the live system (maps cleanly):** the mailbox routine is the injectable `StalwartClient`
 (`lifecycle/stalwart.client.ts` — `createMailbox`/`disableMailbox`), reusable from the external module; the
