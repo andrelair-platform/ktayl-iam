@@ -500,10 +500,26 @@ a shared **`WorkplaceAccessService`** (+ `WorkplaceModule`) now owns the workpla
 and external provisioning — cross-table email allocation (`identity` + `external_collaborator`), mailbox
 provision, birthright-group grant, mailbox disable; `external_collaborator` gained `workplace_email` (unique) +
 `mailbox_provisioned` (migration `1727001800000`); the sentinel suspend disables the mailbox too (leaver
-parity). 12 new tests (179 green). Migration + healthy boot verified on dev + prod; the employee Joiner (which
-now shares the exact same mailbox+group path) runs live, so the workplace-grant mechanics are already
-prod-proven. Remaining acceptance: a full external-provision exercised against a provisioning-configured
-Authentik+Stalwart (dev is not configured for it) — strongly de-risked by the shared-path proof.
+parity). 12 new tests (179 green). Migration + healthy boot verified on dev + prod.
+
+**Live acceptance (2026-11-20) — the real `provision()` run end-to-end against live Authentik on prod (via a
+Nest standalone context, onboarded-event emit suppressed, disposable collaborator, cleaned up). CORE RESULT:
+the external user was created and landed in `Workplace Users` (the birthright) + the scoped `GROUP_<x>` —
+exactly the ADR-015 decision, PROVEN LIVE.** The run also surfaced **four pre-existing infra gaps in the
+external-provisioning path** (which had *never* been exercised against real Authentik/Stalwart before — dev
+isn't provisioning-configured), none an ADR-015 code defect:
+1. **`add_user` missing on the `ktayl-iam-svc` Authentik role** → `POST /core/users/` 403. **FIXED** (granted
+   `authentik_core.add_user` to role `ktayl-iam-svc-group-manager` via `ak-shell`). This also blocked **employee**
+   onboarding (4/5 prod `identity` rows were stuck at `authentik_provisioned=f`).
+2. **`reset_user_password` missing on the same role** → recovery-link `403`. **FIXED** (granted via `ak-shell`).
+3. **No recovery flow on the Authentik brand** → recovery-link `400 "No recovery flow set"`. **OPEN** — needs a
+   recovery flow configured on the default brand (any external invite needs it).
+4. **Stalwart mailbox creation rejected** — `"Cannot set credentials for accounts in an external directory"`:
+   a regression from the **Mail↔Authentik LDAP federation** (Stalwart delegates auth to Authentik → a local
+   password can't be set). **OPEN, platform-wide** — the employee Joiner's `createMailbox` hits it identically;
+   fix = have `StalwartClient.createMailbox` create the principal WITHOUT a password under LDAP delegation (or
+   rely on first-login auto-provision). *(The `ak-shell` RBAC grants in #1/#2 are NOT in GitOps — recorded here
+   + in memory `[[project_iam_adr014_engagement_mirror]]`.)*
 
 **Reviewed against the live system (maps cleanly):** the mailbox routine is the injectable `StalwartClient`
 (`lifecycle/stalwart.client.ts` — `createMailbox`/`disableMailbox`), reusable from the external module; the
