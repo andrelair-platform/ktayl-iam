@@ -6,6 +6,7 @@ import { Identity } from './entities/identity.entity.js';
 import { LifecycleService } from './lifecycle.service.js';
 import { StalwartClient } from './stalwart.client.js';
 import { HrLifecycleConsumer } from './nats.consumer.js';
+import { WorkplaceModule } from '../workplace/workplace.module.js';
 
 /**
  * S015/S016 — HR Joiner/Mover/Leaver intake + workspace provisioning. A durable NATS consumer of the
@@ -13,7 +14,7 @@ import { HrLifecycleConsumer } from './nats.consumer.js';
  * + identity record). Reuses the AuthentikClient from DirectoryModule.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([Identity, Assignment]), DirectoryModule],
+  imports: [TypeOrmModule.forFeature([Identity, Assignment]), DirectoryModule, WorkplaceModule],
   providers: [LifecycleService, StalwartClient, HrLifecycleConsumer],
   exports: [LifecycleService],
 })

@@ -32,9 +32,23 @@ export class ExternalCollaborator {
   @Column({ name: 'display_name', type: 'varchar', length: 200 })
   displayName!: string;
 
-  /** Contact + invitation target (external-party PII — handled minimally, audited). */
+  /** Contact + invitation target (external-party PII — handled minimally, audited). THIS IS THEIR OWN email
+   *  (ESN/personal), used for the Authentik recovery/invite link — NOT the company mailbox below. */
   @Column({ type: 'varchar', length: 200 })
   email!: string;
+
+  /**
+   * The provisioned **company mailbox** (`firstname.lastname@devandre.sbs`) — ADR-015: an external collaborator
+   * gets the SAME workplace tier as an employee. Separate from `email` (their contact address). Null until
+   * provisioned; unique across the whole workplace namespace (see WorkplaceAccessService). Disabled on offboard.
+   */
+  @Index('uq_external_collaborator_workplace_email', { unique: true })
+  @Column({ name: 'workplace_email', type: 'varchar', length: 190, nullable: true })
+  workplaceEmail!: string | null;
+
+  /** True once the Stalwart company mailbox exists (idempotency guard; ADR-015). */
+  @Column({ name: 'mailbox_provisioned', type: 'boolean', default: false })
+  mailboxProvisioned!: boolean;
 
   @Column({ type: 'varchar', length: 20 })
   type!: ExternalCollaboratorType;

@@ -112,13 +112,22 @@ export class ExternalCollaboratorService {
   }
 
   /**
-   * Mark a collaborator provisioned (S027): flip to `active` and record its Authentik username.
-   * Persistence only — the provisioning service audits the richer `external_collaborator.provisioned` event.
+   * Mark a collaborator provisioned (S027): flip to `active` and record its Authentik username. `workplace`
+   * (ADR-015) persists the company mailbox address + provisioned flag when supplied (idempotent — stable once
+   * set). Persistence only — the provisioning service audits the richer `external_collaborator.provisioned` event.
    */
-  async markProvisioned(id: string, authentikUsername: string): Promise<ExternalCollaborator> {
+  async markProvisioned(
+    id: string,
+    authentikUsername: string,
+    workplace?: { workplaceEmail: string | null; mailboxProvisioned: boolean },
+  ): Promise<ExternalCollaborator> {
     const c = await this.getById(id);
     c.status = 'active';
     c.authentikUsername = authentikUsername;
+    if (workplace) {
+      c.workplaceEmail = workplace.workplaceEmail;
+      c.mailboxProvisioned = workplace.mailboxProvisioned;
+    }
     return this.repo.save(c);
   }
 

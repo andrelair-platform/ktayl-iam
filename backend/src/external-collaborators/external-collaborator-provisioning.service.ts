@@ -5,6 +5,7 @@ import { ExternalCollaboratorService } from './external-collaborator.service.js'
 import type { ExternalCollaborator } from './entities/external-collaborator.entity.js';
 import { ExternalCollaboratorEventPublisher } from './external-collaborator-event.publisher.js';
 import { buildOnboardedEvent } from './external-collaborator-events.js';
+import { WorkplaceAccessService } from '../workplace/workplace-access.service.js';
 
 /**
  * Provisions an APPROVED external collaborator to Authentik (IGA-07/S027). Runs after the Sponsor+Security
@@ -27,6 +28,8 @@ export class ExternalCollaboratorProvisioningService {
     private readonly collaborators: ExternalCollaboratorService,
     private readonly authentik: AuthentikClient,
     private readonly audit: AuditService,
+    /** ADR-015 — the shared workplace tier (mailbox + birthright group), identical to an employee. */
+    private readonly workplace: WorkplaceAccessService,
     /** ADR-012 onboarded-event emit. @Optional so unit tests construct the service without NATS. */
     @Optional() private readonly events?: ExternalCollaboratorEventPublisher,
   ) {}
@@ -45,23 +48,50 @@ export class ExternalCollaboratorProvisioningService {
     }
 
     try {
+      // The Authentik user's email stays the CONTACT address (c.email) — the recovery/invite link targets it;
+      // the company mailbox below is a separate Stalwart resource.
       await this.authentik.ensureExternalUser(c.name, c.displayName, c.email);
+      // Scoped BUSINESS groups (named at request time) — these never become birthright (ADR-009).
       for (const group of c.groupRefs) {
         await this.authentik.ensureGroup(group);
         await this.authentik.addUserToGroup(c.name, group);
       }
+
+      // ADR-015 — the WORKPLACE tier, identical to an employee: the birthright `Workplace Users` group +
+      // a company mailbox. Business apps stay request→four-eyes; only the collaboration baseline is birthright.
+      await this.workplace.grantWorkplaceGroup(c.name);
+      let workplaceEmail = c.workplaceEmail;
+      let mailboxProvisioned = c.mailboxProvisioned;
+      if (!workplaceEmail) {
+        workplaceEmail = await this.workplace.allocateEmail(c.displayName, c.name);
+      }
+      if (!mailboxProvisioned && this.workplace.mailboxConfigured) {
+        try {
+          await this.workplace.provisionMailbox(workplaceEmail, c.displayName);
+          mailboxProvisioned = true;
+        } catch (e) {
+          // best-effort — a mailbox failure must not fail the governance-approved provisioning (retryable)
+          this.log.error(`mailbox provisioning failed for "${c.name}": ${(e as Error).message}`);
+        }
+      }
+
       const invite = await this.authentik.createRecoveryLink(c.name);
 
-      const updated = await this.collaborators.markProvisioned(c.id, c.name);
+      const updated = await this.collaborators.markProvisioned(c.id, c.name, {
+        workplaceEmail,
+        mailboxProvisioned,
+      });
       await this.audit.record(actor, 'external_collaborator.provisioned', 'external_collaborator', c.id, {
         collaborator: c.name,
         authentikUsername: c.name,
         groups: c.groupRefs,
+        workplaceGroup: true, // ADR-015 birthright
+        mailboxProvisioned, // ADR-015 company mailbox (address not audited — minimal PII)
         expiresAt: c.expiresAt?.toISOString() ?? null,
         inviteIssued: invite !== null, // the link value is never stored/audited
       });
       this.log.log(
-        `provisioned external collaborator "${c.name}" → groups [${c.groupRefs.join(', ')}], invite ${invite ? 'issued' : 'skipped'}`,
+        `provisioned external collaborator "${c.name}" → business [${c.groupRefs.join(', ')}] + workplace birthright, mailbox ${mailboxProvisioned ? 'provisioned' : 'skipped'}, invite ${invite ? 'issued' : 'skipped'}`,
       );
 
       // ADR-012 seam: emit `onboarded` so n8n creates the non-payroll ERPNext HR worker + binds the

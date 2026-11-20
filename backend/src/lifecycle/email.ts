@@ -24,3 +24,23 @@ export function buildEmail(localPart: string, domain: string, suffix = 0): strin
   const lp = suffix > 0 ? `${localPart}${suffix + 1}` : localPart;
   return `${lp}@${domain}`;
 }
+
+/**
+ * Allocate a unique `firstname.lastname@domain` address, appending 2/3/… on collision. `isTaken` is the
+ * caller's existence check — for the workplace namespace it must span **both** the employee `identity` AND the
+ * `external_collaborator` tables (ADR-015), so an external never collides with an employee of the same name (or
+ * vice-versa). `uniqueFallback` is a guaranteed-unique local part (matricule / `ext-*` username) used only in the
+ * pathological 50-same-name case. Pure except for the injected async predicate → easy to unit-test.
+ */
+export async function allocateUniqueEmail(
+  base: string,
+  domain: string,
+  isTaken: (email: string) => Promise<boolean>,
+  uniqueFallback: string,
+): Promise<string> {
+  for (let suffix = 0; suffix < 50; suffix++) {
+    const candidate = buildEmail(base, domain, suffix);
+    if (!(await isTaken(candidate))) return candidate;
+  }
+  return buildEmail(uniqueFallback, domain); // pathological fallback — the key is unique
+}

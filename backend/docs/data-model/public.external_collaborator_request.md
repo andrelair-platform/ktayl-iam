@@ -61,11 +61,13 @@ erDiagram
   varchar_60_ hr_worker_ref
   uuid id
   timestamp_with_time_zone last_recertified_at
+  boolean mailbox_provisioned
   varchar_120_ name
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
   varchar_20_ type
+  varchar_190_ workplace_email
 }
 ```
 
