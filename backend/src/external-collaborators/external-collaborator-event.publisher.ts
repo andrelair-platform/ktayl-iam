@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'node:crypto';
 import { connect, headers, type NatsConnection } from 'nats';
 import type { AppConfig } from '../config/configuration.js';
-import { canonicalJson } from '../lifecycle/hmac.js';
 import {
   EXTERNAL_COLLABORATOR_ONBOARDED_SUBJECT,
   IAM_EVENTS_STREAM,
@@ -72,7 +71,9 @@ export class ExternalCollaboratorEventPublisher implements OnModuleInit, OnModul
   async emitOnboarded(event: ExternalCollaboratorOnboardedEvent): Promise<void> {
     // ADR-013b: stamp THIS instance's callback base-URL so n8n binds back to the right env (one n8n, both envs).
     const full: ExternalCollaboratorOnboardedEvent = { ...event, iamCallbackBaseUrl: this.callbackBaseUrl };
-    const body = canonicalJson(full);
+    // JSON.stringify (not canonicalJson): this IAM→n8n event is verified by n8n re-stringifying the parsed
+    // body (JSON.parse→JSON.stringify round-trips byte-identically → the IAM-Signature HMAC matches). ADR-013b.
+    const body = JSON.stringify(full);
     const signature = this.sign(body);
 
     // (1) durable NATS log
