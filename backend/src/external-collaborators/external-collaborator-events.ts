@@ -31,6 +31,12 @@ export interface ExternalCollaboratorOnboardedEvent {
   sponsorMatricule: string;
   /** Engagement end = the hard access-expiry (ERPNext `contract_end_date`). ISO date, null if open. */
   endDate: string | null;
+  /**
+   * The base URL of the IAM instance that emitted this event (ADR-013b) — n8n binds the HR worker ref back to
+   * `<iamCallbackBaseUrl>/api/collaborators/:id/hr-worker-ref`. One n8n serves dev+prod, so the event must carry
+   * which IAM to call. Stamped by the publisher from `IAM_CALLBACK_BASE_URL`.
+   */
+  iamCallbackBaseUrl: string;
 }
 
 /** Build the onboarded event from a provisioned collaborator. `company` (firm) decides Prestataire vs Freelance. */
@@ -47,5 +53,6 @@ export function buildOnboardedEvent(c: ExternalCollaborator): ExternalCollaborat
     firm,
     sponsorMatricule: c.sponsorMatricule,
     endDate: c.expiresAt ? c.expiresAt.toISOString().slice(0, 10) : null,
+    iamCallbackBaseUrl: '', // stamped by the publisher from IAM_CALLBACK_BASE_URL before emit (ADR-013b)
   };
 }

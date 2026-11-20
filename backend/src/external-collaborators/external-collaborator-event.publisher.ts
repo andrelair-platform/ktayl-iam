@@ -27,11 +27,14 @@ export class ExternalCollaboratorEventPublisher implements OnModuleInit, OnModul
   private readonly log = new Logger(ExternalCollaboratorEventPublisher.name);
   private readonly cfg: AppConfig['lifecycle'];
   private readonly webhookUrl: string;
+  private readonly callbackBaseUrl: string;
   private nc: NatsConnection | null = null;
 
   constructor(config: ConfigService) {
     this.cfg = config.get<AppConfig['lifecycle']>('lifecycle')!;
-    this.webhookUrl = config.get<AppConfig['integration']>('integration')!.n8nOnboardWebhookUrl;
+    const integ = config.get<AppConfig['integration']>('integration')!;
+    this.webhookUrl = integ.n8nOnboardWebhookUrl;
+    this.callbackBaseUrl = integ.iamCallbackBaseUrl;
   }
 
   /** HMAC-SHA256 hex over the canonical body with the shared signing key (blank key → no signature). */
@@ -67,7 +70,9 @@ export class ExternalCollaboratorEventPublisher implements OnModuleInit, OnModul
    * independently guarded so one being off/failing doesn't block the other.
    */
   async emitOnboarded(event: ExternalCollaboratorOnboardedEvent): Promise<void> {
-    const body = canonicalJson(event);
+    // ADR-013b: stamp THIS instance's callback base-URL so n8n binds back to the right env (one n8n, both envs).
+    const full: ExternalCollaboratorOnboardedEvent = { ...event, iamCallbackBaseUrl: this.callbackBaseUrl };
+    const body = canonicalJson(full);
     const signature = this.sign(body);
 
     // (1) durable NATS log

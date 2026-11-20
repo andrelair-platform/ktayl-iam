@@ -365,6 +365,25 @@ user) → Vault; the **`IAM_SERVICE_KEY`** + **n8n webhook URL** → Vault/ESO +
 `automation→erp` and `automation→ktayl-iam(-prod)`; **import + activate** the n8n workflow. Boundary unchanged:
 **IAM emits + accepts its own field; n8n is the only ERPNext writer** (ADR-009).
 
+### ADR-013b — prod enablement (dev/prod routing) + workflow hardening (2026-11-20)
+The dev loop is live + QA-verified; three items close the gap to a prod-grade integration:
+1. **Dev/prod routing via `iamCallbackBaseUrl` on the event.** ONE n8n workflow serves both envs (one n8n), so
+   the event must say **which IAM to bind back to** — else a dev-originated onboard would bind into prod IAM (or
+   vice-versa). IAM stamps **`iamCallbackBaseUrl`** (its own env's base URL, config `IAM_CALLBACK_BASE_URL`: dev
+   `https://iam-dev.10.0.0.200.nip.io`, prod `https://iam.10.0.0.200.nip.io`) into the event; the n8n bind-back
+   uses it instead of a hard-coded host. Then **prod IAM also gets `N8N_ONBOARD_WEBHOOK_URL`** (emit enabled) +
+   a netpol `ktayl-iam-prod → n8n`. `IAM_SERVICE_KEY` is already on both envs (shared ESO).
+2. **Idempotency (GET-first).** The event may fire twice (retry / at-least-once). The workflow **looks up the
+   worker by `custom_iam_collaborator_id` first** (ERPNext REST filter, URL-encoded inline) and reuses it; only
+   creates if absent → re-firing is a no-op, and the unique constraint is a backstop, not the happy path.
+3. **HMAC verification.** The webhook enables **raw body**; the Code node recomputes
+   `HMAC-SHA256(rawBody, HR_LIFECYCLE_SIGNING_KEY)` and compares it to the **`IAM-Signature`** header (defence-in-
+   depth atop the netpol caller restriction); a mismatch stops the run. Then `JSON.parse` the raw body for the
+   fields. (n8n already has `NODE_FUNCTION_ALLOW_BUILTIN=crypto` + `HR_LIFECYCLE_SIGNING_KEY` in env.)
+
+These are additive + config-gated on the IAM side (dev stays working; prod enables when its env is set). Build
++ QA on dev first, then promote the IAM code to prod and flip prod's webhook URL on.
+
 ### Refinements incorporated (owner review, 2026-11-19)
 
 **R0 — The directory hop is via Authentik, NOT ERPNext→IAM directly (topology correction).** IAM does **not**
