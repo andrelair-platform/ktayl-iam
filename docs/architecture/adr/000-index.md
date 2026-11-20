@@ -492,6 +492,7 @@ the first fixed-term hire. **As built (2026-11-20):**
 - **Live prod QA (end-to-end through the real signed producer):** a future-dated CDD mover → identity mirrors
   `CDD`/`2027-06-30`, stays `active` (no revoke); a past-dated CDD mover → `contract-end (catch-up) … revoking now`
   → `ACCESS REVOKED`, `status=left`. HMAC verified, DTO mapped, both paths exercised; disposable identity cleaned up.
+<<<<<<< HEAD
 
 ## ADR-015 — Workplace birthright for external collaborators {#adr-015}
 **Status: ACCEPTED · 2026-11-20 — owner-approved after a code-mapping review (below); implementation in
@@ -584,3 +585,5 @@ loop —
 Tests: provision grants workplace + mailbox + keeps business scoped + contact-email preserved; email
 uniqueness across both tables; deprovision disables the user **and** the mailbox; idempotent re-provision (no
 second mailbox). Then live QA on dev + the prod-promotion QA gate. (ktayl-iam — this PR.)
+=======
+>>>>>>> origin/main
