@@ -57,13 +57,6 @@ describe('WorkplaceAccessService group + mailbox', () => {
     expect(authentik.addUserToGroup).toHaveBeenCalledWith('ext-acme-jdoe', 'Workplace Users');
   });
 
-  it('provisions a mailbox from the local part', async () => {
-    const { svc, stalwart } = make();
-    const r = await svc.provisionMailbox('jane.doe@devandre.sbs', 'Jane Doe');
-    expect(stalwart.createMailbox).toHaveBeenCalledWith('jane.doe', 'Jane Doe', expect.any(String));
-    expect(r.created).toBe(true);
-  });
-
   it('disables a mailbox best-effort (swallows Stalwart errors)', async () => {
     const { svc, stalwart } = make();
     stalwart.disableMailbox.mockRejectedValueOnce(new Error('down'));

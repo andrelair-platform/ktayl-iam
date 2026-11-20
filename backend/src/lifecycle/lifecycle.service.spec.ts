@@ -100,29 +100,28 @@ describe('LifecycleService joiner', () => {
     repo = fakeRepo();
   });
 
-  it('provisions mailbox + authentik user + birthright group + identity', async () => {
-    const { svc, authentik, stalwart } = makeService(repo);
+  it('provisions authentik user (email = the mailbox) + birthright group + identity (ADR-016)', async () => {
+    const { svc, authentik, stalwart } = makeService(repo, undefined, { defaultMailboxPassword: 'test-default-pw' });
     await svc.handle(joiner('100004', 'Sophie Bernard'));
     const id = repo.rows[0];
     expect(id.matricule).toBe('100004');
     expect(id.email).toBe('sophie.bernard@devandre.sbs');
-    expect(id.mailboxProvisioned).toBe(true);
+    expect(id.mailboxProvisioned).toBe(true); // the Authentik user carries the mailbox address
     expect(id.authentikProvisioned).toBe(true);
     expect(id.status).toBe('active');
-    expect(stalwart.createMailbox).toHaveBeenCalledWith('sophie.bernard', 'Sophie Bernard', expect.any(String));
+    // ADR-016: NO Stalwart createMailbox — the box auto-provisions from the Authentik email via LDAP
+    expect(stalwart.createMailbox).not.toHaveBeenCalled();
     expect(authentik.ensureUser).toHaveBeenCalledWith('100004', 'Sophie Bernard', 'sophie.bernard@devandre.sbs');
     expect(authentik.addUserToGroup).toHaveBeenCalledWith('100004', 'Workplace Users');
-    expect(id.initialMailboxPassword).toBeTruthy();
   });
 
-  it('uses the configured shared DEFAULT password for BOTH the mailbox and the Authentik login (MVP)', async () => {
+  it('sets ONE shared DEFAULT credential on the Authentik user — which is also the mail login via LDAP (ADR-016)', async () => {
     const { svc, stalwart, authentik } = makeService(repo, undefined, { defaultMailboxPassword: 'test-default-pw' });
     await svc.handle(joiner('100005', 'Marc Durand'));
-    // one default credential: the Stalwart mailbox AND the Authentik SSO login get the same value,
-    // set ONCE at onboarding → the employee logs in everywhere with it, then rotates it later.
-    expect(stalwart.createMailbox).toHaveBeenCalledWith('marc.durand', 'Marc Durand', 'test-default-pw');
+    // one credential set ONCE on Authentik; Stalwart binds against Authentik via LDAP → same login for mail.
+    expect(stalwart.createMailbox).not.toHaveBeenCalled();
     expect(authentik.setPassword).toHaveBeenCalledWith('100005', 'test-default-pw');
-    expect(repo.rows[0].initialMailboxPassword).toBe('test-default-pw');
+    expect(repo.rows[0].initialMailboxPassword).toBe('test-default-pw'); // stored for the welcome flow
   });
 
   it('does NOT set the Authentik password when no credential token is configured', async () => {
@@ -134,12 +133,11 @@ describe('LifecycleService joiner', () => {
   });
 
   it('is idempotent — re-processing does not re-provision or duplicate', async () => {
-    const { svc, authentik, stalwart } = makeService(repo);
+    const { svc, authentik } = makeService(repo);
     await svc.handle(joiner('100004', 'Sophie Bernard'));
     await svc.handle(joiner('100004', 'Sophie Bernard'));
     expect(repo.rows).toHaveLength(1);
-    expect(stalwart.createMailbox).toHaveBeenCalledTimes(1); // already provisioned → skipped 2nd time
-    expect(authentik.ensureUser).toHaveBeenCalledTimes(1);
+    expect(authentik.ensureUser).toHaveBeenCalledTimes(1); // already provisioned → skipped 2nd time
   });
 
   it('collision → second person gets a numbered address', async () => {
@@ -199,16 +197,16 @@ describe('LifecycleService joiner', () => {
     expect(authentik.disableUser).toHaveBeenCalledWith('100004');
   });
 
-  it('a failing mailbox leg does not block identity creation (best-effort)', async () => {
-    const { svc, authentik } = makeService(repo);
-    (svc as any).stalwart.createMailbox = vi.fn(async () => {
-      throw new Error('stalwart down');
+  it('a failing Authentik leg does not block identity creation (best-effort)', async () => {
+    const { svc } = makeService(repo);
+    (svc as any).authentik.ensureUser = vi.fn(async () => {
+      throw new Error('authentik down');
     });
     await svc.handle(joiner('100004', 'Sophie Bernard'));
     const id = repo.rows[0];
     expect(id.matricule).toBe('100004'); // identity still persisted
-    expect(id.mailboxProvisioned).toBeFalsy(); // leg failed → flag not set (retry on redelivery)
-    expect(authentik.ensureUser).toHaveBeenCalled(); // other legs still ran
+    expect(id.authentikProvisioned).toBeFalsy(); // leg failed → flag not set (retry on redelivery)
+    expect(id.mailboxProvisioned).toBeFalsy(); // mailbox follows the Authentik user → also not set
   });
 });
 

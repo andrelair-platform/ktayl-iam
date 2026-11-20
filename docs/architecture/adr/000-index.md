@@ -19,6 +19,7 @@
 | [013](#adr-013) | **n8n integration is webhook-driven (not NATS)**: n8n is webhook-native (no JetStream consumer), so IAM **also POSTs the signed onboarded event to an n8n Webhook** (the existing ERPNext→n8n pattern), keeping the NATS publish as a durable log; n8n binds back via a **service-key-guarded** writeback endpoint | **Proposed** | SA/TL |
 | [014](#adr-014) | **Internal-employee engagement mirroring + contract-end access-expiry**: mirror `employment_type` + `contract_end_date` into the IAM identity; a fixed-term engagement (CDD/Alternance/Stage) ties its **access-expiry to the contract end** by **reusing the existing leaver sweep** (scheduled revocation), not a new sentinel. **BUILT + LIVE on dev+prod (2026-11-20)** — IAM mirror + catch-up revoke + extended sweep (ktayl-iam #124) + ERPNext producer emit (minicloud-erpnext #29); end-to-end prod QA green. | **Accepted · built · live** | SA/TL |
 | [015](#adr-015) | **Workplace birthright for external collaborators**: an external collaborator, at provision time, gets the **same workplace tier as an employee** — added to the birthright `Workplace Users` group + a company mailbox (`firstname.lastname@devandre.sbs`) — while **business/LOB apps stay request→dual-approval**. Relaxes the ADR-009 "never birthright-plus" rule for the *workplace* tier only; least-privilege is preserved at the **data** tier. Time-boxed by the external's hard expiry (ADR-009/012). **n8n unchanged (ERPNext worker only); mailbox+group = IAM-direct.** **BUILT + LIVE dev+prod (ktayl-iam #126).** | **Accepted · built · live** | SA/SEC |
+| [016](#adr-016) | **Mailbox provisioning under LDAP federation + an Authentik recovery flow** (closes the ADR-015 live-acceptance gaps #3/#4): under the Mail↔Authentik LDAP federation a user's mailbox **IS their Authentik email** (Stalwart auto-creates the store on first delivery), so IAM **stops calling Stalwart `createMailbox`** (forbidden for external-directory accounts + redundant) and instead sets the **Authentik user email = the company mailbox** (externals: `firstname.lastname@devandre.sbs`, contact email kept IAM-only). **Build a token-path Authentik recovery flow** + assign it to the brand so the external invite link works (self-set credential, ADR-009) + admins gain a reset-link for any user. Email-based self-service reset needs Authentik→Stalwart SMTP (follow-up; `EMAIL_HOST=localhost` today). | **Accepted** | SA/SEC |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -608,3 +609,54 @@ loop —
 Tests: provision grants workplace + mailbox + keeps business scoped + contact-email preserved; email
 uniqueness across both tables; deprovision disables the user **and** the mailbox; idempotent re-provision (no
 second mailbox). Then live QA on dev + the prod-promotion QA gate. (ktayl-iam — this PR.)
+
+## ADR-016 — Mailbox provisioning under LDAP federation + an Authentik recovery flow {#adr-016}
+**Status: ACCEPTED · 2026-11-20 — owner-approved.** Closes the two pre-existing infra gaps the ADR-015 live
+acceptance surfaced (gaps #3/#4). *Document-first; the two decisions were approved before any code/config.*
+
+**Context.** The ADR-015 live provision ran end-to-end against prod Authentik and revealed that the
+external-provisioning path had **never** actually run against real Authentik+Stalwart before. Two
+pre-existing, platform-wide gaps blocked it (NOT ADR-015 code defects):
+- **#4 Mailbox.** `StalwartClient.createMailbox` does a JMAP `Account/set` **with a local password** →
+  Stalwart rejects it (`"Cannot set credentials for accounts in an external directory"`) because the
+  **Mail↔Authentik LDAP federation** (2026-10-07, `minicloud-gitops/docs/mail-ldap-federation.md`) made
+  Stalwart delegate auth to Authentik. The employee Joiner hit the same error (best-effort-swallowed).
+- **#3 Recovery.** `createRecoveryLink` returned `400 "No recovery flow set"` → Authentik has **no recovery
+  flow at all** (none bundled by default); so no user — employee or external — can reset a password.
+
+**Decision 1 — the mailbox IS the Authentik email (stop calling `createMailbox`).** The federation ADR's
+own finding: *"a brand-new LDAP user has no Stalwart mailbox until their first mail delivery (the box
+auto-creates on delivery)."* So under LDAP, **a user's mailbox is their Authentik `email` attribute**, and
+IAM must NOT create a Stalwart principal (it can't — the directory is external). Therefore:
+- **Externals:** allocate the company mailbox `firstname.lastname@devandre.sbs` **first**, then create the
+  Authentik user **with `email = that address`** (employee-identical). The contact/ESN email is kept **in IAM
+  only** (`external_collaborator.email`) — the recovery link is handed over out-of-band, so Authentik's email
+  needn't be the contact address. The mailbox auto-provisions on first delivery/login via LDAP.
+- **Employees:** the Joiner already sets `email = the company mailbox`, so just **remove the dead
+  `createMailbox`** call (it was failing best-effort). `mailbox_provisioned` now means "the Authentik user
+  carries the mailbox address" (the box is lazily materialised by Stalwart), not "a Stalwart principal was
+  created".
+- **Rejected:** (a) *create the Stalwart principal without a password* — still an external-directory write,
+  still rejected, and redundant; (b) *keep contact email as the Authentik email + a separate mailbox* — the
+  mailbox wouldn't resolve via LDAP (LDAP mail = the Authentik email), so the company box would never receive.
+
+**Decision 2 — build a token-path recovery flow (self-set credential; ADR-009).** Create an Authentik
+`recovery`-designation flow bound to the existing `default-password-change-prompt` (new password) +
+`default-password-change-write` (save) stages, and set it as the **brand's `flow_recovery`**. The external
+`createRecoveryLink` token pre-authenticates the user → the flow runs straight to the password-set (no email,
+no identification → **no "reset anyone by username" hole**). This honors ADR-009 (*the external sets their own
+credential, no machine token*) and gives admins a reset-link for any user.
+- **Scope honesty:** full *user-initiated* "forgot password" self-service (identification → email a link)
+  needs **email verification**, which needs **Authentik SMTP** — today `EMAIL_HOST=localhost` (unconfigured),
+  so that path is a **documented follow-up** (wire Authentik → Stalwart submission). Offering identification
+  without email verification would be a vulnerability, so it is deliberately NOT built. The token path (the
+  ADR-015 need) is safe + complete without email.
+- **Not in GitOps:** Authentik RBAC + flows are configured imperatively (the API-token path is dead) → built
+  via a **committed reusable script** `minicloud-ops/scripts/authentik/` + recorded here (as with the ADR-015
+  `add_user`/`reset_user_password` grants).
+
+**Consequences.** Externals (and employees) get a working company mailbox with no Stalwart-side write; the
+recovery flow unblocks the external invite + is the platform's first password-recovery mechanism. The
+`WorkplaceAccessService.provisionMailbox`/`StalwartClient.createMailbox` code paths are retired for new users
+(kept for `disableMailbox` on offboard, which IS a valid Stalwart admin op). Follow-up: Authentik→Stalwart
+SMTP for email self-service reset.

@@ -34,12 +34,10 @@ function makeService(override: any = REQUESTED) {
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
   const events = { emitOnboarded: vi.fn().mockResolvedValue(undefined) };
-  // ADR-015 workplace tier (mailbox + birthright group), same shared service the employee Joiner uses
+  // ADR-015/016 workplace tier (birthright group + allocate the mailbox address), shared with the Joiner
   const workplace = {
-    mailboxConfigured: true,
     grantWorkplaceGroup: vi.fn(async () => undefined),
     allocateEmail: vi.fn(async () => 'jane.doe@devandre.sbs'),
-    provisionMailbox: vi.fn(async () => ({ created: true, password: 'x' })),
     disableMailbox: vi.fn(async () => undefined),
   };
   const svc = new ExternalCollaboratorProvisioningService(
@@ -56,7 +54,8 @@ describe('ExternalCollaboratorProvisioningService', () => {
   it('provisions: Authentik user + scoped groups + invite → active; the invite link is never audited', async () => {
     const { svc, authentik, collaborators, audit } = makeService();
     const out = await svc.provision('ec-1', '100005');
-    expect(authentik.ensureExternalUser).toHaveBeenCalledWith('ext-acme-jdoe', 'Jane Doe (Acme)', 'jane@acme.example');
+    // ADR-016: the Authentik user email = the COMPANY mailbox (allocated), not the contact address
+    expect(authentik.ensureExternalUser).toHaveBeenCalledWith('ext-acme-jdoe', 'Jane Doe (Acme)', 'jane.doe@devandre.sbs');
     expect(authentik.addUserToGroup).toHaveBeenCalledWith('ext-acme-jdoe', 'GROUP_Claims_ReadOnly');
     expect(authentik.createRecoveryLink).toHaveBeenCalledWith('ext-acme-jdoe');
     expect(collaborators.markProvisioned).toHaveBeenCalledWith('ec-1', 'ext-acme-jdoe', {
@@ -69,40 +68,30 @@ describe('ExternalCollaboratorProvisioningService', () => {
     expect(JSON.stringify(detail)).not.toContain('recovery/abc'); // the link value never reaches the audit log
   });
 
-  // ADR-015 — an external collaborator gets the SAME workplace tier as an employee.
-  it('ADR-015: grants the Workplace Users birthright + a company mailbox, keeps business groups scoped', async () => {
+  // ADR-015/016 — an external collaborator gets the SAME workplace tier as an employee.
+  it('ADR-015: grants the Workplace Users birthright + a company mailbox (= Authentik email), keeps business scoped', async () => {
     const { svc, authentik, workplace, audit } = makeService();
     await svc.provision('ec-1', '100005');
     expect(workplace.grantWorkplaceGroup).toHaveBeenCalledWith('ext-acme-jdoe'); // birthright
     expect(workplace.allocateEmail).toHaveBeenCalledWith('Jane Doe (Acme)', 'ext-acme-jdoe');
-    expect(workplace.provisionMailbox).toHaveBeenCalledWith('jane.doe@devandre.sbs', 'Jane Doe (Acme)');
+    // ADR-016: NO Stalwart createMailbox — the box auto-provisions from the Authentik email via LDAP
+    expect((workplace as any).provisionMailbox).toBeUndefined();
     // business access is STILL only the scoped group — no business birthright
     expect(authentik.addUserToGroup).toHaveBeenCalledWith('ext-acme-jdoe', 'GROUP_Claims_ReadOnly');
-    // the Authentik user email stays the CONTACT address (recovery target), not the company mailbox
-    expect(authentik.ensureExternalUser).toHaveBeenCalledWith('ext-acme-jdoe', 'Jane Doe (Acme)', 'jane@acme.example');
+    // the Authentik user email IS the company mailbox (so the box resolves via LDAP)
+    expect(authentik.ensureExternalUser).toHaveBeenCalledWith('ext-acme-jdoe', 'Jane Doe (Acme)', 'jane.doe@devandre.sbs');
     const detail = audit.record.mock.calls.at(-1)![4];
     expect(detail.workplaceGroup).toBe(true);
     expect(detail.mailboxProvisioned).toBe(true);
     expect(JSON.stringify(detail)).not.toContain('jane.doe@devandre.sbs'); // mailbox address not in the audit (minimal PII)
   });
 
-  it('ADR-015: a mailbox failure is best-effort — provisioning still activates (retryable)', async () => {
-    const { svc, workplace, collaborators } = makeService();
-    workplace.provisionMailbox.mockRejectedValueOnce(new Error('stalwart down'));
-    const out = await svc.provision('ec-1', '100005');
-    expect(out.status).toBe('active'); // governance decision is not undone by a mailbox hiccup
-    expect(collaborators.markProvisioned).toHaveBeenCalledWith('ec-1', 'ext-acme-jdoe', {
-      workplaceEmail: 'jane.doe@devandre.sbs',
-      mailboxProvisioned: false, // not provisioned → retryable on re-provision
-    });
-  });
-
-  it('ADR-015: re-provision does not re-allocate/re-create the mailbox (idempotent)', async () => {
+  it('ADR-016: re-provision does not re-allocate the mailbox (idempotent — reuses the stored address)', async () => {
     const already = { ...REQUESTED, workplaceEmail: 'jane.doe@devandre.sbs', mailboxProvisioned: true };
-    const { svc, workplace } = makeService(already);
+    const { svc, workplace, authentik } = makeService(already);
     await svc.provision('ec-1', '100005');
     expect(workplace.allocateEmail).not.toHaveBeenCalled(); // address already allocated
-    expect(workplace.provisionMailbox).not.toHaveBeenCalled(); // box already exists
+    expect(authentik.ensureExternalUser).toHaveBeenCalledWith('ext-acme-jdoe', 'Jane Doe (Acme)', 'jane.doe@devandre.sbs');
     expect(workplace.grantWorkplaceGroup).toHaveBeenCalled(); // group add is itself idempotent
   });
 
