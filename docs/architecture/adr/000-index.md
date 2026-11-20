@@ -663,5 +663,17 @@ credential, no machine token*) and gives admins a reset-link for any user.
 **Consequences.** Externals (and employees) get a working company mailbox with no Stalwart-side write; the
 recovery flow unblocks the external invite + is the platform's first password-recovery mechanism. The
 `WorkplaceAccessService.provisionMailbox`/`StalwartClient.createMailbox` code paths are retired for new users
-(kept for `disableMailbox` on offboard, which IS a valid Stalwart admin op). Follow-up: Authentik→Stalwart
-SMTP for email self-service reset.
+(kept for `disableMailbox` on offboard, which IS a valid Stalwart admin op).
+
+**Self-service password reset — the mechanism is admin/help-desk-issued, by deliberate decision (owner,
+2026-11-20; an accepted scope boundary, not a gap).** The obvious "wire Authentik→Stalwart SMTP for email
+self-service" **does not work here** and was rejected after checking: this is a **unified-credential** platform
+(mail auth = the SSO password via LDAP), so a reset email sent to the user's `@devandre.sbs` mailbox is
+**unreadable** — they're locked out of that box with the very password they forgot (chicken-and-egg); and there
+is no usable second channel (1/27 users have TOTP; no secondary recovery email on file). So the **token-path
+recovery flow is operated as a help-desk-assisted reset** — an admin verifies the person out-of-band and issues
+the `createRecoveryLink`. This is a common, secure enterprise pattern. **Planned path to true self-service
+(programmed for later — ktayl-iam #131):** **mandatory MFA enrollment + a TOTP-based recovery flow** (identify →
+verify your authenticator → set a new password — no email, works for a unified credential); **trigger:** when
+TOTP enrollment can be mandated for all users (it changes every user's next login). Email-based reset is NOT the
+path (circular for a unified credential).
