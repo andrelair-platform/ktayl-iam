@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -105,36 +104,25 @@ export class LifecycleService {
     }
     await this.identities.save(id); // persist early so the subject exists even if a leg later fails
 
-    // 2. Stalwart mailbox (best-effort; skipped if Stalwart not configured)
-    if (!id.mailboxProvisioned && id.email && this.stalwart.configured) {
-      try {
-        const localPart = id.email.split('@')[0];
-        // MVP: a shared DEFAULT initial password for every employee (known value → the mailbox AND the
-        // Nextcloud Mail account can be auto-provisioned without shuttling a per-user secret around).
-        // Employees rotate it to a personal one later (self-service, TODO). Blank default → random.
-        const pw = this.cfg.defaultMailboxPassword || this.genPassword();
-        const created = await this.stalwart.createMailbox(localPart, id.fullName, pw);
-        id.mailboxProvisioned = true;
-        if (created) id.initialMailboxPassword = pw; // deliver-then-rotate (MVP)
-        await this.identities.save(id);
-      } catch (e) {
-        this.log.error(`mailbox provisioning failed for ${s.matricule}: ${(e as Error).message}`);
-      }
-    }
-
-    // 3. Authentik user + birthright group (best-effort; skipped if Authentik not configured)
+    // 2. Authentik user + birthright group (best-effort; skipped if Authentik not configured).
+    // Under the Mail↔Authentik LDAP federation (ADR-016) the user's MAILBOX **is** their Authentik email —
+    // Stalwart auto-creates the box on first delivery via LDAP; IAM must NOT create a Stalwart principal
+    // (`createMailbox` sets a local password → rejected for external-directory accounts, and redundant).
+    // So the single provisioning action is creating the Authentik user with `email = the company mailbox`.
     if (!id.authentikProvisioned && this.authentik.configured) {
       try {
         await this.authentik.ensureUser(s.matricule, id.fullName, id.email);
         await this.authentik.addUserToGroup(s.matricule, this.cfg.workplaceGroup);
-        // Set the shared INITIAL password (same default as the mailbox) ONCE — this block only runs
-        // the first time (authentikProvisioned guards it), so a later re-process never clobbers a
-        // password the employee rotated. One credential: this is the SSO login (and the mail login
-        // too, once Stalwart authenticates against Authentik via LDAP). Needs the elevated token.
+        // Set the shared INITIAL password ONCE — this block only runs the first time (authentikProvisioned
+        // guards it), so a later re-process never clobbers a password the employee rotated. One credential:
+        // the SSO login AND the mail login (Stalwart binds against Authentik via LDAP). Needs the elevated
+        // token; a blank default → no password set → the employee uses the recovery flow (ADR-016).
         if (this.cfg.defaultMailboxPassword && this.authentik.canSetPassword) {
           await this.authentik.setPassword(s.matricule, this.cfg.defaultMailboxPassword);
+          id.initialMailboxPassword = this.cfg.defaultMailboxPassword; // deliver-then-rotate (welcome flow)
         }
         id.authentikProvisioned = true;
+        id.mailboxProvisioned = true; // the Authentik user carries the mailbox address → box auto-provisions
         await this.identities.save(id);
       } catch (e) {
         this.log.error(`authentik provisioning failed for ${s.matricule}: ${(e as Error).message}`);
@@ -253,10 +241,5 @@ export class LifecycleService {
     id.deprovisionedAt = new Date();
     await this.identities.save(id);
     this.log.log(`leaver ${m} → ACCESS REVOKED (assignments=${active.length}, groups removed, user disabled, mailbox archived)`);
-  }
-
-  private genPassword(): string {
-    // URL-safe, mixed — enough entropy for an initial mailbox password the user will rotate.
-    return 'Mp' + randomBytes(15).toString('base64').replace(/[+/=]/g, '').slice(0, 18) + 'x7';
   }
 }

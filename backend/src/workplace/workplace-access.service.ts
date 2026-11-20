@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomBytes } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../config/configuration.js';
 import { Identity } from '../lifecycle/entities/identity.entity.js';
@@ -56,28 +55,21 @@ export class WorkplaceAccessService {
     return emp !== null || ext !== null;
   }
 
-  get mailboxConfigured(): boolean {
-    return this.stalwart.configured;
-  }
-
   /**
-   * Provision the Stalwart mailbox for an already-allocated workplace address (idempotent — Stalwart queries by
-   * name first). Returns whether a NEW box was created + the initial password set (deliver-then-rotate MVP; a
-   * blank configured default ⇒ a random one). Best-effort is the CALLER's concern (wrap in try/catch).
+   * NOTE (ADR-016): there is deliberately NO `provisionMailbox` here. Under the Mail↔Authentik LDAP
+   * federation a user's mailbox **is** their Authentik `email` — Stalwart auto-creates the box on first
+   * delivery and rejects a Stalwart-side `Account/set` for an external-directory account. So "provisioning
+   * a mailbox" = creating the Authentik user with `email = the company mailbox` (done by the caller via
+   * `AuthentikClient.ensureUser`/`ensureExternalUser`), not a call here.
    */
-  async provisionMailbox(workplaceEmail: string, fullName: string): Promise<{ created: boolean; password: string }> {
-    const localPart = workplaceEmail.split('@')[0];
-    const password = this.cfg.defaultMailboxPassword || this.genPassword();
-    const created = await this.stalwart.createMailbox(localPart, fullName, password);
-    return { created, password };
-  }
 
   /** Add a user to the birthright `Workplace Users` group → instant access to the whole workplace suite. */
   async grantWorkplaceGroup(username: string): Promise<void> {
     await this.authentik.addUserToGroup(username, this.cfg.workplaceGroup);
   }
 
-  /** Tear down the mailbox on offboard/suspend (best-effort — mirrors the employee Leaver). */
+  /** Tear down the mailbox on offboard/suspend (best-effort — the real control is disabling the Authentik
+   *  user, which blocks LDAP mail auth; this archives the Stalwart store for retention where supported). */
   async disableMailbox(workplaceEmail: string): Promise<void> {
     if (!this.stalwart.configured) return;
     try {
@@ -85,9 +77,5 @@ export class WorkplaceAccessService {
     } catch (e) {
       this.log.error(`mailbox disable failed for ${workplaceEmail}: ${(e as Error).message}`);
     }
-  }
-
-  private genPassword(): string {
-    return 'Mp' + randomBytes(15).toString('base64').replace(/[+/=]/g, '').slice(0, 18) + 'x7';
   }
 }
