@@ -5,11 +5,13 @@
 | Name                     | Type                     | Default                     | Nullable | Children | Parents | Comment |
 | ------------------------ | ------------------------ | --------------------------- | -------- | -------- | ------- | ------- |
 | authentik_provisioned    | boolean                  | false                       | false    |          |         |         |
+| contract_end_date        | date                     |                             | true     |          |         |         |
 | country                  | varchar(80)              |                             | true     |          |         |         |
 | created_at               | timestamp with time zone | now()                       | false    |          |         |         |
 | department               | varchar(120)             |                             | true     |          |         |         |
 | deprovisioned_at         | timestamp with time zone |                             | true     |          |         |         |
 | email                    | varchar(190)             |                             | true     |          |         |         |
+| employment_type          | varchar(40)              |                             | true     |          |         |         |
 | entity                   | varchar(120)             |                             | true     |          |         |         |
 | full_name                | varchar(160)             |                             | false    |          |         |         |
 | initial_mailbox_password | varchar(64)              |                             | true     |          |         |         |
@@ -42,11 +44,13 @@ erDiagram
 
 "public.identity" {
   boolean authentik_provisioned
+  date contract_end_date
   varchar_80_ country
   timestamp_with_time_zone created_at
   varchar_120_ department
   timestamp_with_time_zone deprovisioned_at
   varchar_190_ email
+  varchar_40_ employment_type
   varchar_120_ entity
   varchar_160_ full_name
   varchar_64_ initial_mailbox_password

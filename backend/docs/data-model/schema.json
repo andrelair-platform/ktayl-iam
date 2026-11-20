@@ -518,6 +518,11 @@
           "default": "false"
         },
         {
+          "name": "contract_end_date",
+          "type": "date",
+          "nullable": true
+        },
+        {
           "name": "country",
           "type": "varchar(80)",
           "nullable": true
@@ -541,6 +546,11 @@
         {
           "name": "email",
           "type": "varchar(190)",
+          "nullable": true
+        },
+        {
+          "name": "employment_type",
+          "type": "varchar(40)",
           "nullable": true
         },
         {
