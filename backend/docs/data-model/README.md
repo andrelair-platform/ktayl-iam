@@ -10,7 +10,7 @@
 | [public.external_collaborator](public.external_collaborator.md)                 | 18      |         | BASE TABLE |
 | [public.external_collaborator_request](public.external_collaborator_request.md) | 10      |         | BASE TABLE |
 | [public.identity](public.identity.md)                                           | 18      |         | BASE TABLE |
-| [public.request](public.request.md)                                             | 10      |         | BASE TABLE |
+| [public.request](public.request.md)                                             | 12      |         | BASE TABLE |
 | [public.role](public.role.md)                                                   | 8       |         | BASE TABLE |
 | [public.service_account](public.service_account.md)                             | 12      |         | BASE TABLE |
 | [public.service_account_request](public.service_account_request.md)             | 11      |         | BASE TABLE |
@@ -109,6 +109,8 @@ erDiagram
   timestamp_with_time_zone updated_at
 }
 "public.request" {
+  uuid batch_id
+  varchar_160_ batch_label
   timestamp_with_time_zone created_at
   uuid id
   varchar_32_ manager_approver

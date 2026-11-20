@@ -16,6 +16,7 @@ import type { AppConfig } from '../config/configuration.js';
 import { AdminOnly } from '../auth/admin-only.decorator.js';
 import { WorkflowService } from './workflow.service.js';
 import { CreateRequestDto } from './dto/create-request.dto.js';
+import { CreateBatchRequestDto } from './dto/create-batch-request.dto.js';
 import { DecideDto } from './dto/decide.dto.js';
 
 /** matricule of the signed-in user (the global AuthenticatedGuard guarantees a session). */
@@ -51,6 +52,33 @@ export class RequestsController {
     }
     const requester = isAdminOf(req) ? (dto.requesterId ?? actor) : actor;
     return this.workflow.createRequest(requester, dto.roleId, actor);
+  }
+
+  /** ADR-017 — file a BATCH (N roles as one demande under a trackable `batchId`). Each role keeps its own
+   *  two-leg four-eyes. Non-admin may only batch-request for themselves; admin may file on behalf. */
+  @Post('batch')
+  createBatch(@Body() dto: CreateBatchRequestDto, @Req() req: ExpressRequest) {
+    const actor = actorOf(req);
+    if (dto.requesterId && dto.requesterId !== actor && !isAdminOf(req)) {
+      throw new ForbiddenException('You can only request access for yourself.');
+    }
+    const requester = isAdminOf(req) ? (dto.requesterId ?? actor) : actor;
+    return this.workflow.createBatchRequest(requester, dto.roleIds, actor, dto.label);
+  }
+
+  /** ADR-017 — the batch tracking view (which roles granted vs blocked + on which leg). Visible to the
+   *  batch requester, any approver of a role in it, or an admin. */
+  @Get('batch/:batchId')
+  async getBatch(@Param('batchId', ParseUUIDPipe) batchId: string, @Req() req: ExpressRequest) {
+    const batch = await this.workflow.getBatch(batchId);
+    if (!isAdminOf(req)) {
+      const actor = actorOf(req);
+      const involved =
+        batch.requester === actor ||
+        batch.requests.some((r) => r.managerApprover === actor || r.ownerApprover === actor);
+      if (!involved) throw new ForbiddenException('You can only view your own batches.');
+    }
+    return batch;
   }
 
   @Get()

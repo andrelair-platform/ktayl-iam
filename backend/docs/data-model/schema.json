@@ -662,6 +662,16 @@
       "type": "BASE TABLE",
       "columns": [
         {
+          "name": "batch_id",
+          "type": "uuid",
+          "nullable": true
+        },
+        {
+          "name": "batch_label",
+          "type": "varchar(160)",
+          "nullable": true
+        },
+        {
           "name": "created_at",
           "type": "timestamp with time zone",
           "nullable": false,
@@ -717,6 +727,14 @@
         }
       ],
       "indexes": [
+        {
+          "name": "idx_request_batch_id",
+          "def": "CREATE INDEX idx_request_batch_id ON public.request USING btree (batch_id)",
+          "table": "public.request",
+          "columns": [
+            "batch_id"
+          ]
+        },
         {
           "name": "request_pkey",
           "def": "CREATE UNIQUE INDEX request_pkey ON public.request USING btree (id)",

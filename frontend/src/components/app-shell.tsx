@@ -43,6 +43,7 @@ interface NavItem {
 // Target IA (frontend-redesign.md §4); paths keep the current routes during migration.
 const MY_ACCESS: NavItem[] = [
   { href: "/me", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/me/access", label: "My access", icon: KeyRound },
   { href: "/me/request", label: "Request access", icon: FilePlus2 },
   { href: "/me/requests", label: "My requests", icon: ListChecks },
   { href: "/me/approvals", label: "My approvals", icon: CheckSquare },

@@ -4,6 +4,8 @@
 
 | Name             | Type                     | Default                      | Nullable | Children | Parents                       | Comment |
 | ---------------- | ------------------------ | ---------------------------- | -------- | -------- | ----------------------------- | ------- |
+| batch_id         | uuid                     |                              | true     |          |                               |         |
+| batch_label      | varchar(160)             |                              | true     |          |                               |         |
 | created_at       | timestamp with time zone | now()                        | false    |          |                               |         |
 | id               | uuid                     | gen_random_uuid()            | false    |          |                               |         |
 | manager_approver | varchar(32)              |                              | true     |          |                               |         |
@@ -24,9 +26,10 @@
 
 ## Indexes
 
-| Name         | Definition                                                          |
-| ------------ | ------------------------------------------------------------------- |
-| request_pkey | CREATE UNIQUE INDEX request_pkey ON public.request USING btree (id) |
+| Name                 | Definition                                                                 |
+| -------------------- | -------------------------------------------------------------------------- |
+| idx_request_batch_id | CREATE INDEX idx_request_batch_id ON public.request USING btree (batch_id) |
+| request_pkey         | CREATE UNIQUE INDEX request_pkey ON public.request USING btree (id)        |
 
 ## Relations
 
@@ -36,6 +39,8 @@ erDiagram
 "public.request" }o--|| "public.role" : "FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE"
 
 "public.request" {
+  uuid batch_id
+  varchar_160_ batch_label
   timestamp_with_time_zone created_at
   uuid id
   varchar_32_ manager_approver

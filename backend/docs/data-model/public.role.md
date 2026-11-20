@@ -69,6 +69,8 @@ erDiagram
   varchar_32_ user_id
 }
 "public.request" {
+  uuid batch_id
+  varchar_160_ batch_label
   timestamp_with_time_zone created_at
   uuid id
   varchar_32_ manager_approver
