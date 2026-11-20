@@ -54,18 +54,37 @@ Body is **canonical JSON** (sorted keys); verify `IAM-Signature` = `HMAC_SHA256(
 > `custom_iam_collaborator_id` + `custom_agency_or_firm` are custom fields on `Employee`. `custom_agency_or_firm`
 > was added in ADR-012 Step 1; add `custom_iam_collaborator_id` (Data, the idempotency key) the same way.
 
-## Owner wiring checklist (what needs secrets / the n8n UI)
-- [ ] **ERPNext API token** — create a service user (e.g. `iam-integration@…`) with Employee create/read perms →
-      generate `api_key`/`api_secret`.
-- [ ] **Vault** (break-glass): `secret/platform/ktayl-iam-integration` = `erpnext-api-key`, `erpnext-api-secret`,
-      `service-key` (a fresh random `IAM_SERVICE_KEY`), `n8n-webhook-url`.
-- [ ] **IAM env** (gitops `services/ktayl-iam/helm/values-*.yaml` + an ESO ExternalSecret): `IAM_SERVICE_KEY`
-      and `N8N_ONBOARD_WEBHOOK_URL` (dev first). Until set, the webhook-emit is off + the writeback is fail-closed.
-- [ ] **egress netpols** — apply `netpol-automation-egress.yaml` (below) in minicloud-gitops: `automation → erp`
-      + `automation → ktayl-iam(-prod)` + `automation → DNS`.
-- [ ] **n8n** — import `external-collaborator-onboarding.workflow.json`, set the ERPNext + IAM credentials, set
-      the signing key, **activate**; copy the webhook URL into Vault → IAM.
-- [ ] **QA on dev** — provision a test external collaborator → the ERPNext `Employee` appears (non-payroll) →
-      `hr_worker_ref` binds → the console shows the `HR-EMP-xxxxx` (flag clears from `pending`).
+## Wiring checklist — ✅ DONE + QA-verified on dev (2026-11-20)
+- [x] **ERPNext API token** — service user `iam-integration@devandre.sbs` (HR Manager) + `api_key`/`api_secret`;
+      custom fields `custom_agency_or_firm` + `custom_iam_collaborator_id` (unique) on `Employee`; **`gender` +
+      `date_of_birth` made non-mandatory** (Property Setter) — externals legitimately have neither.
+- [x] **Vault** (break-glass): `secret/platform/ktayl-iam-integration` = `erpnext-api-key`, `erpnext-api-secret`,
+      `service-key` (`IAM_SERVICE_KEY`), `n8n-webhook-url`.
+- [x] **IAM env (dev)** — `N8N_ONBOARD_WEBHOOK_URL` (literal) + `IAM_SERVICE_KEY` (ESO) → gitops #2322. The
+      publisher now emits the signed webhook; the `hr-worker-ref` writeback accepts the key (real→404, wrong→401).
+- [x] **n8n** — `n8n-iam-integration` ExternalSecret (`ERPNEXT_API_KEY/SECRET` + `IAM_SERVICE_KEY`) + `envFrom`
+      (gitops #2322); netpol `allow-iam-to-n8n-webhook` (IAM→n8n:5678). Workflow imported + **active**.
+- [x] **QA on dev** — fired the `onboarded` event → ERPNext `Employee` created (Prestataire · firm · **no Salary
+      Structure** → never payroll) → `hr_worker_ref` bound back into IAM. ✅ Full loop verified.
 
-See `netpol-automation-egress.yaml` for the exact NetworkPolicy manifests.
+### As-built notes (the gotchas that cost us)
+- **Use a Code node with `this.helpers.httpRequest`**, not templated HTTP-Request nodes — the latter's `jsonBody`
+  / header expressions are fragile. The committed `*.workflow.json` is the Code-node version.
+- **ERPNext `Employee` mandatory fields:** `first_name`, `company` (= `Ktayl Solutions`), `date_of_joining`
+  (= today) — plus `gender`/`date_of_birth` unless made non-mandatory (we did). Returns `417` when one is missing
+  **or** on a duplicate `custom_iam_collaborator_id` (it's `unique`).
+- **The IAM collaborator id must be a valid UUID** (`ParseUUIDPipe`) — real ids are v4; a hand-made test id with a
+  bad version nibble `400`s the writeback.
+- **n8n reaches ERPNext/IAM via the `erp.devandre.sbs` / `iam-dev.10.0.0.200.nip.io` ingress** with
+  `skipSslCertificateValidation` (minicloud CA); the `automation` ns default-denies ingress but egress is open.
+
+### Remaining (prod + hardening)
+- [ ] **Prod enablement** — needs the event to carry the IAM callback base-URL (dev/prod routing); prod
+      `N8N_ONBOARD_WEBHOOK_URL` is intentionally blank until then.
+- [ ] **Idempotency on retry** — the unique `custom_iam_collaborator_id` prevents duplicates (a re-fire `417`s the
+      create); add a GET-first-then-bind path if re-binding on retry is wanted.
+- [ ] **Signature verification** in the workflow (the `IAM-Signature` HMAC) — currently the netpol restricts the
+      caller; add the HMAC check for defence-in-depth.
+
+See `netpol-automation-egress.yaml` for the (optional, egress-hardening) manifests; the load-bearing one applied
+was `is/workplace/n8n/07-netpol-iam-to-n8n.yaml` (ingress IAM→n8n).
