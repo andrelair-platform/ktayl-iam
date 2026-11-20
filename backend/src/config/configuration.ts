@@ -122,6 +122,12 @@ export interface AppConfig {
      * off** (the durable NATS publish still happens). Set via env N8N_ONBOARD_WEBHOOK_URL.
      */
     n8nOnboardWebhookUrl: string;
+    /**
+     * This IAM instance's own base URL (ADR-013b) — stamped into the `onboarded` event so n8n binds the HR
+     * worker ref back to the RIGHT env (one n8n serves dev+prod). env IAM_CALLBACK_BASE_URL
+     * (dev `https://iam-dev.10.0.0.200.nip.io`, prod `https://iam.10.0.0.200.nip.io`).
+     */
+    iamCallbackBaseUrl: string;
   };
 }
 
@@ -216,6 +222,7 @@ export function loadConfig(): AppConfig {
     integration: {
       serviceKey: (e.IAM_SERVICE_KEY ?? '') as string,
       n8nOnboardWebhookUrl: (e.N8N_ONBOARD_WEBHOOK_URL ?? '') as string,
+      iamCallbackBaseUrl: (e.IAM_CALLBACK_BASE_URL ?? '') as string,
     },
   };
 }
