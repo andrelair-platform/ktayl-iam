@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LifecycleService, type LifecycleEvent } from './lifecycle.service.js';
 import type { Identity } from './entities/identity.entity.js';
+import { allocateUniqueEmail, deriveLocalPart } from './email.js';
 
 // in-memory Identity repository (matricule + email lookups)
 function fakeRepo() {
@@ -75,8 +76,22 @@ function makeService(
   };
   const stalwart = { configured: true, createMailbox: vi.fn(async () => true), disableMailbox: vi.fn(async () => true) };
   const config = { get: () => ({ workplaceGroup: 'Workplace Users', mailDomain: 'devandre.sbs', ...cfgExtra }) };
-  const svc = new LifecycleService(repo as any, assignments as any, authentik as any, stalwart as any, config as any);
-  return { svc, authentik, stalwart, assignments };
+  // WorkplaceAccessService stand-in — mirrors allocateEmail (cross-table check reduced to the identity repo here)
+  const workplace = {
+    allocateEmail: vi.fn(async (fullName: string, key: string) => {
+      const base = deriveLocalPart(fullName) || key;
+      return allocateUniqueEmail(base, 'devandre.sbs', async (email) => (await repo.findOne({ where: { email } })) !== null, key);
+    }),
+  };
+  const svc = new LifecycleService(
+    repo as any,
+    assignments as any,
+    authentik as any,
+    stalwart as any,
+    workplace as any,
+    config as any,
+  );
+  return { svc, authentik, stalwart, workplace, assignments };
 }
 
 describe('LifecycleService joiner', () => {

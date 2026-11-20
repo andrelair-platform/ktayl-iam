@@ -11,18 +11,21 @@ import { ExternalCollaboratorsController } from './external-collaborators.contro
 import { ServiceKeyGuard } from '../auth/service-key.guard.js';
 import { CatalogModule } from '../catalog/catalog.module.js';
 import { DirectoryModule } from '../directory/directory.module.js';
+import { WorkplaceModule } from '../workplace/workplace.module.js';
 
 /**
  * Governed external-collaborator module (IGA-07). S025 = the entity + persistence; S026 = the
  * Sponsor+Security dual-approval request workflow (+ active-sponsor validation + expiry ceiling) + API;
  * S027 the Authentik provisioning; S028 expiry/renewal; S029 the sponsor-Leaver safety net. Imports
- * CatalogModule for the shared AuditService and DirectoryModule for the AuthentikClient (sponsor check).
+ * CatalogModule for the shared AuditService, DirectoryModule for the AuthentikClient (sponsor check), and
+ * WorkplaceModule for the ADR-015 workplace tier (company mailbox + birthright group, same as an employee).
  */
 @Module({
   imports: [
     TypeOrmModule.forFeature([ExternalCollaborator, ExternalCollaboratorRequest]),
     CatalogModule,
     DirectoryModule,
+    WorkplaceModule,
   ],
   controllers: [ExternalCollaboratorsController],
   providers: [

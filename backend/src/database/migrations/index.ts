@@ -16,6 +16,7 @@ import { ExternalCollaboratorCompany1727001400000 } from './1727001400000-Extern
 import { ExternalCollaboratorSupplierRef1727001500000 } from './1727001500000-ExternalCollaboratorSupplierRef.js';
 import { ExternalCollaboratorHrWorkerRef1727001600000 } from './1727001600000-ExternalCollaboratorHrWorkerRef.js';
 import { IdentityEngagement1727001700000 } from './1727001700000-IdentityEngagement.js';
+import { ExternalCollaboratorWorkplaceMailbox1727001800000 } from './1727001800000-ExternalCollaboratorWorkplaceMailbox.js';
 
 /** Ordered migration set (run on boot via TypeORM `migrationsRun`). Append new migrations here. */
 export const MIGRATIONS = [
@@ -37,4 +38,5 @@ export const MIGRATIONS = [
   ExternalCollaboratorSupplierRef1727001500000, // IGA-07 pay-link (ADR-010) — read-only Supplier/contract ref (paid contractor)
   ExternalCollaboratorHrWorkerRef1727001600000, // ADR-012 — drop supplier_ref → hr_worker_ref (ERPNext non-payroll Employee id)
   IdentityEngagement1727001700000, // ADR-014 — identity employment_type + contract_end_date (fixed-term access-expiry)
+  ExternalCollaboratorWorkplaceMailbox1727001800000, // ADR-015 — external collaborator workplace mailbox + birthright
 ];

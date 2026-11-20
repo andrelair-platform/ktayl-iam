@@ -15,11 +15,13 @@
 | hr_worker_ref       | varchar(60)              |                                | true     |                                                                                 |         |         |
 | id                  | uuid                     | gen_random_uuid()              | false    | [public.external_collaborator_request](public.external_collaborator_request.md) |         |         |
 | last_recertified_at | timestamp with time zone |                                | true     |                                                                                 |         |         |
+| mailbox_provisioned | boolean                  | false                          | false    |                                                                                 |         |         |
 | name                | varchar(120)             |                                | false    |                                                                                 |         |         |
 | purpose             | text                     |                                | false    |                                                                                 |         |         |
 | sponsor_matricule   | varchar(32)              |                                | false    |                                                                                 |         |         |
 | status              | varchar(16)              | 'requested'::character varying | false    |                                                                                 |         |         |
 | type                | varchar(20)              |                                | false    |                                                                                 |         |         |
+| workplace_email     | varchar(190)             |                                | true     |                                                                                 |         |         |
 
 ## Constraints
 
@@ -31,10 +33,11 @@
 
 ## Indexes
 
-| Name                          | Definition                                                                                           |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| external_collaborator_pkey    | CREATE UNIQUE INDEX external_collaborator_pkey ON public.external_collaborator USING btree (id)      |
-| uq_external_collaborator_name | CREATE UNIQUE INDEX uq_external_collaborator_name ON public.external_collaborator USING btree (name) |
+| Name                                     | Definition                                                                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| external_collaborator_pkey               | CREATE UNIQUE INDEX external_collaborator_pkey ON public.external_collaborator USING btree (id)                            |
+| uq_external_collaborator_name            | CREATE UNIQUE INDEX uq_external_collaborator_name ON public.external_collaborator USING btree (name)                       |
+| uq_external_collaborator_workplace_email | CREATE UNIQUE INDEX uq_external_collaborator_workplace_email ON public.external_collaborator USING btree (workplace_email) |
 
 ## Relations
 
@@ -55,11 +58,13 @@ erDiagram
   varchar_60_ hr_worker_ref
   uuid id
   timestamp_with_time_zone last_recertified_at
+  boolean mailbox_provisioned
   varchar_120_ name
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
   varchar_20_ type
+  varchar_190_ workplace_email
 }
 "public.external_collaborator_request" {
   uuid collaborator_id FK

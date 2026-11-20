@@ -9,7 +9,7 @@ import type { AppConfig } from '../config/configuration.js';
 import { Assignment } from '../catalog/entities/assignment.entity.js';
 import { Identity } from './entities/identity.entity.js';
 import { StalwartClient } from './stalwart.client.js';
-import { buildEmail, deriveLocalPart } from './email.js';
+import { WorkplaceAccessService } from '../workplace/workplace-access.service.js';
 
 /** The normalized J/M/L event the producer emits (erpnext_hr_lifecycle, schema ktayl.hr.lifecycle/v1). */
 export interface LifecycleEvent {
@@ -62,6 +62,7 @@ export class LifecycleService {
     @InjectRepository(Assignment) private readonly assignments: Repository<Assignment>,
     private readonly authentik: AuthentikClient,
     private readonly stalwart: StalwartClient,
+    private readonly workplace: WorkplaceAccessService,
     config: ConfigService,
   ) {
     this.cfg = config.get<AppConfig['lifecycle']>('lifecycle')!;
@@ -97,9 +98,10 @@ export class LifecycleService {
     id.status = 'active';
     id.lastEventAt = ev.occurred_at ? new Date(ev.occurred_at) : new Date();
 
-    // 1. derive the workplace email (collision-safe) — only once, kept stable afterwards
+    // 1. derive the workplace email (collision-safe across employees AND external collaborators, ADR-015) —
+    //    only once, kept stable afterwards
     if (!id.email) {
-      id.email = await this.deriveUniqueEmail(id.fullName, s.matricule);
+      id.email = await this.workplace.allocateEmail(id.fullName, s.matricule);
     }
     await this.identities.save(id); // persist early so the subject exists even if a leg later fails
 
@@ -251,18 +253,6 @@ export class LifecycleService {
     id.deprovisionedAt = new Date();
     await this.identities.save(id);
     this.log.log(`leaver ${m} → ACCESS REVOKED (assignments=${active.length}, groups removed, user disabled, mailbox archived)`);
-  }
-
-  /** firstname.lastname@domain, appending 2/3/… if an identity already holds that address. */
-  private async deriveUniqueEmail(fullName: string, matricule: string): Promise<string> {
-    const base = deriveLocalPart(fullName) || `emp${matricule}`;
-    for (let suffix = 0; suffix < 50; suffix++) {
-      const candidate = buildEmail(base, this.cfg.mailDomain, suffix);
-      const clash = await this.identities.findOne({ where: { email: candidate } });
-      if (!clash) return candidate;
-    }
-    // pathological fallback — matricule is unique
-    return buildEmail(`emp${matricule}`, this.cfg.mailDomain);
   }
 
   private genPassword(): string {

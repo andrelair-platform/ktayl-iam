@@ -7,7 +7,7 @@
 | [public.application](public.application.md)                                     | 7       |         | BASE TABLE |
 | [public.assignment](public.assignment.md)                                       | 10      |         | BASE TABLE |
 | [public.audit_log](public.audit_log.md)                                         | 7       |         | BASE TABLE |
-| [public.external_collaborator](public.external_collaborator.md)                 | 16      |         | BASE TABLE |
+| [public.external_collaborator](public.external_collaborator.md)                 | 18      |         | BASE TABLE |
 | [public.external_collaborator_request](public.external_collaborator_request.md) | 10      |         | BASE TABLE |
 | [public.identity](public.identity.md)                                           | 18      |         | BASE TABLE |
 | [public.request](public.request.md)                                             | 10      |         | BASE TABLE |
@@ -68,11 +68,13 @@ erDiagram
   varchar_60_ hr_worker_ref
   uuid id
   timestamp_with_time_zone last_recertified_at
+  boolean mailbox_provisioned
   varchar_120_ name
   text purpose
   varchar_32_ sponsor_matricule
   varchar_16_ status
   varchar_20_ type
+  varchar_190_ workplace_email
 }
 "public.external_collaborator_request" {
   uuid collaborator_id FK

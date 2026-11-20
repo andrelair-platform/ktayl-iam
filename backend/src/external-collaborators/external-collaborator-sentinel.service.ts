@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { AuthentikClient } from '../directory/authentik.client.js';
 import { ExternalCollaboratorService } from './external-collaborator.service.js';
 import type { ExternalCollaborator } from './entities/external-collaborator.entity.js';
+import { WorkplaceAccessService } from '../workplace/workplace-access.service.js';
 
 /**
  * The external-collaborator safety net (IGA-07 / S028 auto-suspend + S029 sponsor-Leaver). A daily sweep
@@ -22,6 +23,8 @@ export class ExternalCollaboratorSentinelService {
   constructor(
     private readonly collaborators: ExternalCollaboratorService,
     private readonly authentik: AuthentikClient,
+    /** ADR-015 — tear down the company mailbox on suspend, mirroring the employee Leaver. */
+    private readonly workplace: WorkplaceAccessService,
   ) {}
 
   /** Daily at 03:00 — the orphaned-access guard actually firing. Public + returns counts (testable/manual). */
@@ -49,11 +52,17 @@ export class ExternalCollaboratorSentinelService {
     return { expired, flagged };
   }
 
-  /** Suspend a collaborator: flip status (audited) + disable the Authentik account (no standing access). */
+  /**
+   * Suspend a collaborator: flip status (audited) + disable the Authentik account (no standing access) + (ADR-015)
+   * disable the company mailbox — mirroring the employee Leaver, so an offboarded external can't retain webmail.
+   */
   private async suspend(c: ExternalCollaborator, status: 'expired' | 'flagged'): Promise<void> {
     await this.collaborators.updateStatus(c.id, status, 'system'); // audits external_collaborator.<status>
     if (this.authentik.configured && c.authentikUsername) {
       await this.authentik.disableUser(c.authentikUsername).catch(() => undefined);
+    }
+    if (c.workplaceEmail) {
+      await this.workplace.disableMailbox(c.workplaceEmail); // best-effort (ADR-015)
     }
   }
 }

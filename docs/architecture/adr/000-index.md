@@ -18,6 +18,7 @@
 | [012](#adr-012) | **Workforce engagement model**: ERPNext HR = SoR for engagement types (CDI/CDD/Alternance/Stage + **Prestataire/Freelance = non-payroll**) + grade (cadre/non-cadre) + salary + start/end dates; **external collaborators become non-payroll HR workers**; IAM mirrors engagement-type + dates and ties access-expiry to the engagement end | **Proposed** | SA/TL |
 | [013](#adr-013) | **n8n integration is webhook-driven (not NATS)**: n8n is webhook-native (no JetStream consumer), so IAM **also POSTs the signed onboarded event to an n8n Webhook** (the existing ERPNext→n8n pattern), keeping the NATS publish as a durable log; n8n binds back via a **service-key-guarded** writeback endpoint | **Proposed** | SA/TL |
 | [014](#adr-014) | **Internal-employee engagement mirroring + contract-end access-expiry**: mirror `employment_type` + `contract_end_date` into the IAM identity; a fixed-term engagement (CDD/Alternance/Stage) ties its **access-expiry to the contract end** by **reusing the existing leaver sweep** (scheduled revocation), not a new sentinel. **BUILT + LIVE on dev+prod (2026-11-20)** — IAM mirror + catch-up revoke + extended sweep (ktayl-iam #124) + ERPNext producer emit (minicloud-erpnext #29); end-to-end prod QA green. | **Accepted · built · live** | SA/TL |
+| [015](#adr-015) | **Workplace birthright for external collaborators**: an external collaborator, at provision time, gets the **same workplace tier as an employee** — added to the birthright `Workplace Users` group + a company mailbox (`firstname.lastname@devandre.sbs`) — while **business/LOB apps stay request→dual-approval**. Relaxes the ADR-009 "never birthright-plus" rule for the *workplace* tier only; least-privilege is preserved at the **data** tier. Time-boxed by the external's hard expiry (ADR-009/012). **n8n unchanged (ERPNext worker only); mailbox+group = IAM-direct.** | **Accepted** | SA/SEC |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -491,3 +492,95 @@ the first fixed-term hire. **As built (2026-11-20):**
 - **Live prod QA (end-to-end through the real signed producer):** a future-dated CDD mover → identity mirrors
   `CDD`/`2027-06-30`, stays `active` (no revoke); a past-dated CDD mover → `contract-end (catch-up) … revoking now`
   → `ACCESS REVOKED`, `status=left`. HMAC verified, DTO mapped, both paths exercised; disposable identity cleaned up.
+
+## ADR-015 — Workplace birthright for external collaborators {#adr-015}
+**Status: ACCEPTED · 2026-11-20 — owner-approved after a code-mapping review (below); implementation in
+progress.** *Document-first: the decision was written + approved before any code.*
+
+**Reviewed against the live system (maps cleanly):** the mailbox routine is the injectable `StalwartClient`
+(`lifecycle/stalwart.client.ts` — `createMailbox`/`disableMailbox`), reusable from the external module; the
+birthright group is `cfg.workplaceGroup` (`WORKPLACE_GROUP ?? 'Workplace Users'`) added via
+`authentik.addUserToGroup` — the same calls the employee Joiner makes. **n8n is unchanged** — it still only
+does the **ERPNext HR-worker writeback** (ADR-012/013, the `onboarded` event); the mailbox + workplace group
+are written by **IAM directly** to its own enforcement plane (Authentik + Stalwart), per the ADR-009 boundary
+(*IAM writes its own plane; n8n writes downstream business systems*). Two implementation nuances surfaced by
+the review are folded into the build sketch below: the **contact email vs company mailbox** split, and the
+**cross-table email-uniqueness** check.
+
+**Context.** The platform is an **M365 alternative** — the *workplace suite* (Nextcloud, OnlyOffice, Mail/
+Stalwart, Matrix/Element, Jitsi, Docuseal, n8n, Homer, …) is what everyone needs just to *collaborate*;
+the *business/LOB apps* (ERPNext, ktayl-core, Claims, Underwriting, GLPI, the IAM console itself, …) hold
+**regulated insurance data** and are gated. Today the two populations are provisioned asymmetrically:
+- **Employees (HR Joiner, S015/016):** `onJoinerOrMover` derives a company mailbox (`firstname.lastname@
+  devandre.sbs`), creates the Authentik user, and adds them to the birthright **`Workplace Users`** group
+  (`cfg.workplaceGroup`) → *instant access to the whole workplace suite*. Business apps come later via
+  request → dual-approval (ADR-007).
+- **External collaborators (IGA-07, S027):** `ExternalCollaboratorProvisioningService.provision` creates the
+  Authentik user and adds **only the scoped `GROUP_<x>`** named at request time — explicitly **"never
+  birthright-plus"** (ADR-009) — and provisions **no mailbox**.
+
+So a contractor can be handed a Claims role but **cannot open Nextcloud, chat on Matrix, or join a Jitsi
+call** — the very tools they need to actually work with the team. The owner's requirement: an external
+collaborator should get the **same workplace tier as an employee**, while still **not** gaining any business
+app automatically.
+
+**Decision (proposed).** At external-collaborator **provision time**, in addition to the scoped business
+`GROUP_<x>`:
+1. **Add the external to the same birthright `Workplace Users` group** (`cfg.workplaceGroup`) — the *identical*
+   binding set employees get. (Owner choice: **reuse** the one group, not a separate `External Workplace
+   Users` — simplest; externality stays visible via the `external_collaborator` record + the `ext-<firm>-<user>`
+   username convention, not via a distinct workplace group.)
+2. **Provision a company mailbox** (`firstname.lastname@devandre.sbs`) for the external, reusing the employee
+   Joiner's collision-safe email derivation + Stalwart provisioning routine. (Owner choice: **full suite incl.
+   mailbox** — truly identical to an employee.)
+3. **Business apps stay request→dual-approval.** The relaxation is **workplace-tier only**; least-privilege is
+   preserved where it matters — the **data** tier. ADR-009's "never birthright-plus" is **amended**: it now
+   means *"no birthright **business** access"*, not *"no birthright at all"*.
+4. **Scope: all external collaborators** get it (no engagement-type/duration gate).
+5. **Time-boxing (unchanged safety net):** the workplace grant is bounded by the external's **hard expiry**
+   (ADR-009 sentinel auto-suspend + sponsor-Leaver) and, where a `contract_end_date` applies, the ADR-014
+   sweep. Offboarding already **removes ALL Authentik groups** (incl. `Workplace Users`) and must now also
+   **archive the external's mailbox** (the employee Leaver path already does this — extend the external
+   deprovision to call it).
+
+**Rejected / alternatives.** (a) *A separate `External Workplace Users` group* — more auditable/scopable, but
+the owner chose the single shared group for simplicity (revisit if externals ever need a different workplace
+session/DLP policy). (b) *No company mailbox for externals (use their ESN email)* — lower data-at-rest + more
+BYOD-aligned, but the owner wants a single identical identity. (c) *Keep "never birthright-plus" and let the
+sponsor name the workplace groups per-request* — toil + drift (every contractor would re-enumerate the whole
+suite); birthright is exactly the right tool for "everyone gets the baseline".
+
+**Consequences.**
+- ➕ A contractor is immediately productive (collaboration tools) without a dual-approval round-trip per app.
+- ➖ Externals now hold a **company mailbox** → more data-at-rest + a mandatory **leaver mailbox-archive** step
+  on the external deprovision path (new work; the employee path already has it).
+- ⚠️ **Mailbox naming collision:** an external `Jane Doe @ Acme` derives `jane.doe@devandre.sbs` — same as an
+  employee Jane Doe. The existing `deriveUniqueEmail` is collision-safe (disambiguates), so this is handled,
+  but externals' boxes are **not** visually distinguishable from staff by address (accepted, per the single-
+  identity choice; revisit with an `.ext` suffix if wanted).
+- 🔒 Audit: provisioning audit event gains the `Workplace Users` grant + mailbox; the `external_collaborator`
+  record remains the SoR for *who is external*.
+- Security posture statement for an interviewer/auditor: **"birthright = collaboration; business data = earned
+  (request + four-eyes) — for staff and contractors alike."** A clean, defensible least-privilege line.
+
+**Build sketch (approved).** Extend `ExternalCollaboratorProvisioningService.provision`: after the scoped-group
+loop —
+1. **Company mailbox ≠ contact email.** The entity's existing `email` is the contractor's **own contact/recovery
+   address** (used for the Authentik invite) — **do not overwrite it.** Add **separate** columns
+   `workplace_email` + `mailbox_provisioned` to `external_collaborator` (migration). Derive `workplace_email`
+   = `firstname.lastname@<domain>` and provision it via the shared `StalwartClient.createMailbox`. The Authentik
+   user's recovery still goes to the **contact** email (the external can't yet reach the new box).
+2. **Cross-table uniqueness.** The employee `deriveUniqueEmail` only checks the `identity` table; an external
+   `jane.doe` must not collide with an **employee** `jane.doe` **or another external**. Make the email
+   allocator check **both** `identity.email` and `external_collaborator.workplace_email` (extract a small shared
+   allocator, or query both) — collision-safe disambiguation.
+3. **Workplace group.** `authentik.addUserToGroup(c.name, cfg.workplaceGroup)` — the same `Workplace Users`
+   birthright, in addition to the scoped `GROUP_<x>` business groups (business stays request→four-eyes).
+4. **Deprovision parity.** The sentinel `suspend` + the admin `disable`/offboard path today **disable the
+   Authentik user** (blocks all login). Since externals now own a mailbox, **also** call
+   `StalwartClient.disableMailbox(workplace_email)` — mirror the employee Leaver (`lifecycle.service` L245).
+5. **Audit** payload gains the `Workplace Users` grant + the mailbox (the invite link is still never stored).
+
+Tests: provision grants workplace + mailbox + keeps business scoped + contact-email preserved; email
+uniqueness across both tables; deprovision disables the user **and** the mailbox; idempotent re-provision (no
+second mailbox). Then live QA on dev + the prod-promotion QA gate. (ktayl-iam — this PR.)
