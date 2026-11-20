@@ -17,6 +17,7 @@
 | [011](#adr-011) | **Event→n8n integration seam** (IAM emits `onboarded`; n8n writes the downstream system; IAM never calls it directly) — **target corrected by [012](#adr-012)** from ERPNext *Supplier* to ERPNext *non-payroll HR worker* | **Revised → 012** | SA/TL |
 | [012](#adr-012) | **Workforce engagement model**: ERPNext HR = SoR for engagement types (CDI/CDD/Alternance/Stage + **Prestataire/Freelance = non-payroll**) + grade (cadre/non-cadre) + salary + start/end dates; **external collaborators become non-payroll HR workers**; IAM mirrors engagement-type + dates and ties access-expiry to the engagement end | **Proposed** | SA/TL |
 | [013](#adr-013) | **n8n integration is webhook-driven (not NATS)**: n8n is webhook-native (no JetStream consumer), so IAM **also POSTs the signed onboarded event to an n8n Webhook** (the existing ERPNext→n8n pattern), keeping the NATS publish as a durable log; n8n binds back via a **service-key-guarded** writeback endpoint | **Proposed** | SA/TL |
+| [014](#adr-014) | **Internal-employee engagement mirroring + contract-end access-expiry**: mirror `employment_type` + `contract_end_date` into the IAM identity; a fixed-term engagement (CDD/Alternance/Stage) ties its **access-expiry to the contract end** by **reusing the existing leaver sweep** (scheduled revocation), not a new sentinel. **Design accepted; BUILD DEFERRED (need-first — zero fixed-term employees today).** | **Accepted (design) · build-deferred** | SA/TL |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -443,3 +444,41 @@ collaborator maps to this.
 - `Employee` custom field **`custom_agency_or_firm`** (Data or Link→Supplier, read-only/informational).
 - **Backfill** the 4 seed employees' NULL `employment_type`; verify `contract_end_date`/`relieving_date` behaviour.
 - Confirm **no Salary Structure** is attached to Stage/Prestataire/Freelance (payroll-excluded).
+
+## ADR-014 — Internal-employee engagement mirroring + contract-end access-expiry {#adr-014}
+**Status: ACCEPTED (design) · BUILD DEFERRED (need-first) · 2026-11-20.** The symmetric internal-employee half
+of ADR-012: external collaborators tie access to their engagement end; internal **fixed-term** employees should
+too.
+
+**Context.** ADR-012 made ERPNext HR the SoR for engagement types incl. **CDI / CDD / Alternance / Stage**. A
+fixed-term contract (CDD/Alternance/Stage) has a **`contract_end_date`**; a **CDI** is open-ended. Today IAM's
+`identity` mirror carries only `offboard_date` (the relieving date, set by a **Leaver** event) and a **daily
+sweep auto-revokes** any identity whose offboard date has passed (S017 — with a "revoke the day-after /
+catch-up-if-backdated" rule). So a fixed-term employee's access is only time-boxed **if** HR fires a Leaver
+event on time — there is no proactive cap at the contract end.
+
+**Decision (design).** Tie a fixed-term engagement's access-expiry to its contract end **by reusing the existing
+leaver sweep**, not by adding a second sentinel:
+1. **Mirror `employment_type` + `contract_end_date`** onto the `identity` (additive migration; the `hr.lifecycle`
+   event gains two **optional, back-compatible** fields — absent ⇒ today's behaviour unchanged).
+2. For a **fixed-term** engagement (`CDD`/`Alternance`/`Stage`) with a `contract_end_date`, set the identity's
+   **scheduled revocation = `contract_end_date`** (the existing sweep then revokes at contract end). **CDI** has
+   no end ⇒ no scheduled expiry. A **renewal** (mover/updated event with a new `contract_end_date`) just **moves
+   the scheduled date** — a still-employed person is never cut off. A real **Leaver** (earlier relieving) still
+   wins. One revocation path (DRY), consistent with the Leaver + external-collaborator models.
+3. **Enabling dependency:** the ERPNext **`erpnext_hr_lifecycle`** producer must **emit** `employment_type` +
+   `contract_end_date` on joiner/mover events (a Frappe-app change) — the IAM side is inert until it does.
+
+**Rejected.** (a) *A new "contract-end" sentinel* — duplicates the leaver sweep; DRY-reuse is cleaner. (b)
+*Flag-for-HR-review instead of auto-revoke* — safer but a second path + access can outlive the contract until a
+human acts; the auto-revoke-via-sweep (with renewals updating the date) is consistent and genuinely time-boxes
+access. (Revisit at build time if a human-in-the-loop grace is wanted.) (c) *IAM owns the contract dates* —
+ERPNext HR is the SoR (ADR-012); IAM mirrors.
+
+**Consequences / why deferred.** The design is coherent + additive (safe to build when wanted). But **need-first**
+(`cloud-adoption.md`): ERPNext currently has **zero** CDD/Alternance/Stage employees (all 5 internal are CDI, no
+`contract_end_date` populated) — the feature would have nothing to act on. **Build trigger:** the first real
+fixed-term employee (or a demonstrable need). Build then = the additive IAM mirror + the ERPNext producer field
+emit + a QA with a seeded fixed-term identity (inject a signed `hr.lifecycle` event, verify the sweep revokes at
+the contract end). This is a **documented scope boundary, not a gap** (same posture as the BYOD boundary in
+`project-governance.md`).
