@@ -61,6 +61,17 @@ export class Request {
   @Column({ name: 'owner_decision', type: 'jsonb', nullable: true })
   ownerDecision!: ApprovalDecision | null;
 
+  /**
+   * ADR-017 — the **batch instance** this request belongs to. N single-role requests submitted as one
+   * "demande" share one `batchId` (the trackable case id); each still carries its OWN two-leg four-eyes
+   * (above). Null for a standalone single request. `batchLabel` is an optional human title.
+   */
+  @Column({ name: 'batch_id', type: 'uuid', nullable: true })
+  batchId!: string | null;
+
+  @Column({ name: 'batch_label', type: 'varchar', length: 160, nullable: true })
+  batchLabel!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

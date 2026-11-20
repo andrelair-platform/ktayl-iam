@@ -138,3 +138,65 @@ describe('WorkflowService — dual approval (S004, ADR-007)', () => {
     });
   });
 });
+
+// ── ADR-017 — batch access-requests ───────────────────────────────────────────────────────────
+describe('WorkflowService — batch requests (ADR-017)', () => {
+  const ROLE_A = { id: 'aaaaaaaa-1111-1111-1111-111111111111', owner: '900003', authentikGroupRef: 'g-a', application: { name: 'App A' } };
+  const ROLE_B = { id: 'bbbbbbbb-2222-2222-2222-222222222222', owner: '900004', authentikGroupRef: 'g-b', application: { name: 'App B' } };
+
+  function buildBatch() {
+    const store: any[] = [];
+    let seq = 0;
+    const requests = {
+      create: (x: any) => ({ id: `req-${++seq}`, managerDecision: null, ownerDecision: null, ...x }),
+      save: vi.fn(async (x: any) => {
+        const row = { id: x.id ?? `req-${++seq}`, createdAt: new Date(), ...x };
+        store.push(row);
+        return row;
+      }),
+      find: vi.fn(async ({ where }: any) => store.filter((r) => r.batchId === where.batchId)),
+    };
+    const roles = { findOne: vi.fn(async ({ where }: any) => (where.id === ROLE_A.id ? ROLE_A : ROLE_B)) };
+    const managerResolver = { resolveManager: vi.fn(async () => ({ requester: '900009', manager: '900002', source: 'hr', fallback: false })) };
+    const audit = { record: vi.fn(async () => {}) };
+    const config = { get: () => ({ fallbackApprover: '900001' }) };
+    const svc = new WorkflowService(requests as any, {} as any, roles as any, managerResolver as any, audit as any, {} as any, config as any);
+    return { svc, store, audit };
+  }
+
+  it('creates N requests under ONE shared batchId, each with its OWN two legs', async () => {
+    const { svc, store } = buildBatch();
+    const out = await svc.createBatchRequest('900009', [ROLE_A.id, ROLE_B.id], '900009', 'Jane onboarding');
+    expect(out.requests).toHaveLength(2);
+    expect(store).toHaveLength(2);
+    const batchIds = new Set(store.map((r) => r.batchId));
+    expect(batchIds.size).toBe(1); // one shared instance
+    expect(out.batchId).toBe([...batchIds][0]);
+    expect(store.every((r) => r.batchLabel === 'Jane onboarding')).toBe(true);
+    // each role keeps its own owner leg (different owners) — four-eyes per role
+    expect(store.find((r) => r.roleId === ROLE_A.id).ownerApprover).toBe('900003');
+    expect(store.find((r) => r.roleId === ROLE_B.id).ownerApprover).toBe('900004');
+  });
+
+  it('dedupes repeated roleIds and rejects an empty batch', async () => {
+    const { svc, store } = buildBatch();
+    await svc.createBatchRequest('900009', [ROLE_A.id, ROLE_A.id], '900009');
+    expect(store).toHaveLength(1); // deduped
+    await expect(svc.createBatchRequest('900009', [], '900009')).rejects.toThrow(/at least one role/);
+  });
+
+  it('getBatch returns the roles + a derived summary (which are granted vs pending)', async () => {
+    const { svc } = buildBatch();
+    const { batchId } = await svc.createBatchRequest('900009', [ROLE_A.id, ROLE_B.id], '900009');
+    const view = await svc.getBatch(batchId);
+    expect(view.batchId).toBe(batchId);
+    expect(view.requester).toBe('900009');
+    expect(view.requests).toHaveLength(2);
+    expect(view.summary).toEqual({ total: 2, granted: 0, pending: 2, denied: 0, cancelled: 0 });
+  });
+
+  it('getBatch 404s an unknown batch', async () => {
+    const { svc } = buildBatch();
+    await expect(svc.getBatch('00000000-0000-0000-0000-000000000000')).rejects.toThrow(/not found/);
+  });
+});

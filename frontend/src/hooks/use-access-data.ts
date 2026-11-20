@@ -19,6 +19,9 @@ export interface AccessRequest {
   managerDecision: HumanDecision;
   ownerDecision: HumanDecision;
   role?: { name: string; application?: { name: string } };
+  /** ADR-017 — the batch instance this request belongs to (null for a standalone single request). */
+  batchId?: string | null;
+  batchLabel?: string | null;
 }
 
 export interface Role {

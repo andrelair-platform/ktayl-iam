@@ -20,6 +20,7 @@
 | [014](#adr-014) | **Internal-employee engagement mirroring + contract-end access-expiry**: mirror `employment_type` + `contract_end_date` into the IAM identity; a fixed-term engagement (CDD/Alternance/Stage) ties its **access-expiry to the contract end** by **reusing the existing leaver sweep** (scheduled revocation), not a new sentinel. **BUILT + LIVE on dev+prod (2026-11-20)** — IAM mirror + catch-up revoke + extended sweep (ktayl-iam #124) + ERPNext producer emit (minicloud-erpnext #29); end-to-end prod QA green. | **Accepted · built · live** | SA/TL |
 | [015](#adr-015) | **Workplace birthright for external collaborators**: an external collaborator, at provision time, gets the **same workplace tier as an employee** — added to the birthright `Workplace Users` group + a company mailbox (`firstname.lastname@devandre.sbs`) — while **business/LOB apps stay request→dual-approval**. Relaxes the ADR-009 "never birthright-plus" rule for the *workplace* tier only; least-privilege is preserved at the **data** tier. Time-boxed by the external's hard expiry (ADR-009/012). **n8n unchanged (ERPNext worker only); mailbox+group = IAM-direct.** **BUILT + LIVE dev+prod (ktayl-iam #126).** | **Accepted · built · live** | SA/SEC |
 | [016](#adr-016) | **Mailbox provisioning under LDAP federation + an Authentik recovery flow** (closes the ADR-015 live-acceptance gaps #3/#4): under the Mail↔Authentik LDAP federation a user's mailbox **IS their Authentik email** (Stalwart auto-creates the store on first delivery), so IAM **stops calling Stalwart `createMailbox`** (forbidden for external-directory accounts + redundant) and instead sets the **Authentik user email = the company mailbox** (externals: `firstname.lastname@devandre.sbs`, contact email kept IAM-only). **Build a token-path Authentik recovery flow** + assign it to the brand so the external invite link works (self-set credential, ADR-009) + admins gain a reset-link for any user. **BUILT + LIVE dev+prod — full external onboarding verified e2e on prod.** Email self-service reset needs Authentik→Stalwart SMTP (follow-up). | **Accepted · built · live** | SA/SEC |
+| [017](#adr-017) | **Self-service "My Access" + batch access-requests with a trackable instance**: (A) `GET /access/me` (self-scoped) + a `/me/access` table showing the **complete** picture — governed grants (assignments) **merged with live Authentik groups** incl. the Workplace Users birthright, each row tagged by source; (B) a nullable **`batch_id` instance** groups N single-role requests into one "demande" — **each role keeps its own two-leg (manager + owner) four-eyes** — + a batch tracking view that shows per-role leg state so you see exactly **which role is blocked and on which leg**. Per-leg tracking + the stable request id already exist; this adds self-view + batch grouping. | **Accepted** | SA/SEC |
 
 ## ADR-001 — Authentik = IdP + enforcement; a custom platform = the governance layer {#adr-001}
 **Context.** **Authentik is our "Entra"** — the directory where every employee lives + the runtime
@@ -677,3 +678,56 @@ the `createRecoveryLink`. This is a common, secure enterprise pattern. **Planned
 verify your authenticator → set a new password — no email, works for a unified credential); **trigger:** when
 TOTP enrollment can be mandated for all users (it changes every user's next login). Email-based reset is NOT the
 path (circular for a unified credential).
+
+## ADR-017 — Self-service "My Access" + batch access-requests with a trackable instance {#adr-017}
+**Status: ACCEPTED · 2026-11-20 — owner-approved.** Two user-facing additions to the IGA console.
+*Document-first: approved before build.*
+
+**Context (what already exists — verified in code).** Per-leg approval tracking is **already live**: each
+`request` is one trackable instance (`request.id` UUID) with two legs — **manager** + **role-owner** — each
+carrying `pending/approved/denied`, and the console (`RequestCard`) already renders *Filed → Manager → Owner →
+Granted*. A role grants only when **both** legs approve (`workflow.service.ts` `bothApproved`), so the scenario
+"manager approved but the owner hasn't → not granted, blocked on the owner leg" is **already visible per
+request**. Two real gaps remain:
+1. **Access visibility is admin-only** (`GET /access/*` is `@AdminOnly()`) — a regular user **cannot see their
+   own granted roles**; there is no self-service "what do I have access to" view.
+2. **Requests are single-role** — there is no way to request several roles as one *demande*, and no **batch
+   instance** to track a multi-role request as a unit (which of my roles are granted vs blocked, and on which
+   leg).
+
+**Decision A — "My Access" (self-service, complete picture).** Add **`GET /access/me`** — self-scoped (derives
+the matricule from the session; a user sees **only** their own access; no admin guard). It returns the
+**complete** picture by merging two sources, each row **tagged by source**:
+- **Governed** — the user's active `assignment` rows (role · application · granted-on · sync-state) = roles
+  earned via four-eyes.
+- **Birthright / Direct** — the user's **live Authentik group memberships** (`AuthentikClient.getUserGroups`)
+  that aren't a governed assignment — incl. the **`Workplace Users` birthright** + any direct/synced groups.
+Frontend: a read-only **`/me/access`** table (sortable, source-tagged). No grant/revoke from here — that stays
+governed (request → four-eyes). *Rejected:* governed-grants-only (misses birthright → not the complete picture
+the owner asked for).
+
+**Decision B — Batch access-requests + a trackable instance.**
+- **Model:** add a nullable **`batch_id` (uuid) + `batch_label`** to `request`. A batch = the set of requests
+  sharing a `batch_id` — **that id is the instance/case id**. **No new approval semantics: each role keeps its
+  own independent two-leg four-eyes** (manager + *that role's* owner) — different roles have different owners, so
+  four-eyes must hold **per role**. The batch is a *grouping + tracking* construct, not one combined approval.
+- **Submit:** `POST /requests/batch` `{ roleIds:[…], justification }` → creates N requests under one new
+  `batch_id`, each with its resolved legs; returns the batch instance + its requests. A single-role request is
+  just a batch of one (or no `batch_id`) — **backward compatible**.
+- **Track:** `GET /requests/batch/:batchId` → the batch + each role-request's per-leg state → the *"where is it
+  blocked"* view (e.g. `Underwriting: manager ✓ / owner ⏳ → blocked on owner; grants when the owner approves`).
+  A batch is "complete" only when every role's four-eyes clears. Visible to the requester + the relevant
+  approvers.
+- **Frontend:** the request form gains **multi-role select** → one batch; **`/me/requests`** groups by batch
+  instance and shows per-role leg state + the blocking leg; the approvers' inbox is **unchanged** (each leg is
+  still decided per role).
+*Rejected:* (a) a single batch-level approval for all roles — breaks four-eyes-per-role; (b) a heavyweight
+separate `request_batch` entity/state-machine — the batch status is cheaply **derived** from its requests, so a
+`batch_id` column suffices (need-first).
+
+**Consequences.** Users get self-service access visibility (less admin load; an audit/interview-grade "I can see
+my own access" story) + a grouped multi-role request with clear blocking visibility — **without weakening the
+four-eyes guarantee** (still per role). Backend: 2–3 new endpoints (`/access/me`, `/requests/batch`,
+`/requests/batch/:id`) + a migration (batch columns). Frontend: a `/me/access` page + multi-select on the
+request form + batch grouping on `/me/requests`. Path B → the full L0–L4 tests + the live QA gate apply before
+prod promotion.

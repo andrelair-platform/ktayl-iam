@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../config/configuration.js';
 import { Role } from '../catalog/entities/role.entity.js';
@@ -54,7 +55,12 @@ export class WorkflowService {
    * File a request for a role. Resolves + freezes the two approvers (manager from HR, owner from
    * the role), applying the no-self-approval / four-eyes reassignment. Audited; nothing is granted.
    */
-  async createRequest(requesterId: string, roleId: string, actor: string): Promise<AccessRequest> {
+  async createRequest(
+    requesterId: string,
+    roleId: string,
+    actor: string,
+    batch?: { id: string; label: string | null },
+  ): Promise<AccessRequest> {
     const role = await this.roles.findOne({ where: { id: roleId }, relations: { application: true } });
     if (!role) throw new NotFoundException(`role ${roleId} not found`);
 
@@ -75,6 +81,8 @@ export class WorkflowService {
         ownerApprover: resolution.ownerApprover,
         managerDecision: null,
         ownerDecision: null,
+        batchId: batch?.id ?? null,
+        batchLabel: batch?.label ?? null,
       }),
     );
 
@@ -90,6 +98,67 @@ export class WorkflowService {
       needsManualReview: resolution.needsManualReview,
     });
     return req;
+  }
+
+  /**
+   * ADR-017 — a **batch** access-request: N roles submitted as one "demande" under a single `batchId`
+   * (the trackable instance). **Each role gets its own independent two-leg four-eyes** (same manager, but
+   * that role's own owner) — so a batch is a grouping, NOT a combined approval. Roles grant as each one's
+   * four-eyes clears (governance-correct: no reason to withhold an already-approved role). At least one role.
+   */
+  async createBatchRequest(
+    requesterId: string,
+    roleIds: string[],
+    actor: string,
+    label?: string | null,
+  ): Promise<{ batchId: string; label: string | null; requests: AccessRequest[] }> {
+    const unique = [...new Set(roleIds)];
+    if (unique.length === 0) throw new BadRequestException('a batch needs at least one role');
+    const batchId = randomUUID();
+    const batch = { id: batchId, label: label ?? null };
+    const requests: AccessRequest[] = [];
+    for (const roleId of unique) {
+      requests.push(await this.createRequest(requesterId, roleId, actor, batch));
+    }
+    await this.audit.record(actor, 'request.batch_created', 'request_batch', batchId, {
+      requester: requesterId,
+      roleCount: unique.length,
+      label: label ?? null,
+    });
+    return { batchId, label: label ?? null, requests };
+  }
+
+  /**
+   * ADR-017 — the batch tracking view: every role-request under a `batchId`, in filing order, plus a
+   * derived summary so a reader sees at a glance which roles are granted vs **blocked and on which leg**.
+   */
+  async getBatch(batchId: string): Promise<{
+    batchId: string;
+    label: string | null;
+    requester: string;
+    requests: AccessRequest[];
+    summary: { total: number; granted: number; pending: number; denied: number; cancelled: number };
+  }> {
+    const requests = await this.requests.find({
+      where: { batchId },
+      relations: { role: { application: true } },
+      order: { createdAt: 'ASC' },
+    });
+    if (requests.length === 0) throw new NotFoundException(`batch ${batchId} not found`);
+    const count = (s: string) => requests.filter((r) => r.status === s).length;
+    return {
+      batchId,
+      label: requests[0].batchLabel,
+      requester: requests[0].requesterId,
+      requests,
+      summary: {
+        total: requests.length,
+        granted: count('approved'),
+        pending: count('pending'),
+        denied: count('denied'),
+        cancelled: count('cancelled'),
+      },
+    };
   }
 
   /**
