@@ -46,12 +46,12 @@ export class ServiceAccountService {
         status: 'requested',
       }),
     );
-    await this.audit.record(input.createdBy, 'service_account.created', 'service_account', sa.id, {
+    await this.audit.record({ actor: input.createdBy, action: 'service_account.created', entityType: 'service_account', entityId: sa.id, detail: {
       name: sa.name,
       type: sa.type,
       owner: sa.ownerMatricule,
       groups: sa.groupRefs,
-    });
+    } });
     return sa;
   }
 
@@ -106,11 +106,11 @@ export class ServiceAccountService {
     }
     sa.lastRecertifiedAt = new Date();
     const saved = await this.repo.save(sa);
-    await this.audit.record(actor, 'service_account.recertified', 'service_account', id, {
+    await this.audit.record({ actor: actor, action: 'service_account.recertified', entityType: 'service_account', entityId: id, detail: {
       name: sa.name,
       owner: sa.ownerMatricule,
       at: sa.lastRecertifiedAt.toISOString(),
-    });
+    } });
     return saved;
   }
 
@@ -130,7 +130,7 @@ export class ServiceAccountService {
     const sa = await this.getById(id);
     sa.status = status;
     const saved = await this.repo.save(sa);
-    await this.audit.record(actor, `service_account.${status}`, 'service_account', id, {});
+    await this.audit.record({ actor: actor, action: `service_account.${status}`, entityType: 'service_account', entityId: id, detail: {} });
     return saved;
   }
 }

@@ -32,11 +32,13 @@ describe('ServiceAccountService.create', () => {
     expect(sa.status).toBe('requested');
     expect(repo.save).toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(
-      ACTOR,
-      'service_account.created',
-      'service_account',
-      'sa-1',
-      expect.objectContaining({ name: 'ktayl-qa-finance', owner: '100001', groups: ['Finance'] }),
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'service_account.created',
+        entityType: 'service_account',
+        entityId: 'sa-1',
+        detail: expect.objectContaining({ name: 'ktayl-qa-finance', owner: '100001', groups: ['Finance'] }),
+      }),
     );
   });
 
@@ -67,7 +69,9 @@ describe('ServiceAccountService.recertify', () => {
     repo.findOne.mockResolvedValueOnce({ id: 'sa-1', name: 'ktayl-qa-finance', ownerMatricule: '100001', status: 'active', lastRecertifiedAt: null });
     const out = await svc.recertify('sa-1', '100001');
     expect(out.lastRecertifiedAt).toBeInstanceOf(Date);
-    expect(audit.record).toHaveBeenCalledWith('100001', 'service_account.recertified', 'service_account', 'sa-1', expect.objectContaining({ name: 'ktayl-qa-finance' }));
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: '100001', action: 'service_account.recertified', entityType: 'service_account', entityId: 'sa-1', detail: expect.objectContaining({ name: 'ktayl-qa-finance' }) }),
+    );
   });
 
   it('refuses to recertify a non-active account (409)', async () => {
@@ -98,6 +102,8 @@ describe('ServiceAccountService.updateStatus', () => {
     repo.findOne.mockResolvedValue({ id: 'sa-1', name: INPUT.name, status: 'requested' });
     const sa = await svc.updateStatus('sa-1', 'active', ACTOR);
     expect(sa.status).toBe('active');
-    expect(audit.record).toHaveBeenCalledWith(ACTOR, 'service_account.active', 'service_account', 'sa-1', {});
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: ACTOR, action: 'service_account.active', entityType: 'service_account', entityId: 'sa-1', detail: {} }),
+    );
   });
 });

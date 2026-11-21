@@ -63,7 +63,7 @@ describe('ExternalCollaboratorProvisioningService', () => {
       mailboxProvisioned: true,
     });
     expect(out.status).toBe('active');
-    const detail = audit.record.mock.calls.at(-1)![4];
+    const detail = audit.record.mock.calls.at(-1)![0].detail;
     expect(detail.inviteIssued).toBe(true);
     expect(JSON.stringify(detail)).not.toContain('recovery/abc'); // the link value never reaches the audit log
   });
@@ -80,7 +80,7 @@ describe('ExternalCollaboratorProvisioningService', () => {
     expect(authentik.addUserToGroup).toHaveBeenCalledWith('ext-acme-jdoe', 'GROUP_Claims_ReadOnly');
     // the Authentik user email IS the company mailbox (so the box resolves via LDAP)
     expect(authentik.ensureExternalUser).toHaveBeenCalledWith('ext-acme-jdoe', 'Jane Doe (Acme)', 'jane.doe@devandre.sbs');
-    const detail = audit.record.mock.calls.at(-1)![4];
+    const detail = audit.record.mock.calls.at(-1)![0].detail;
     expect(detail.workplaceGroup).toBe(true);
     expect(detail.mailboxProvisioned).toBe(true);
     expect(JSON.stringify(detail)).not.toContain('jane.doe@devandre.sbs'); // mailbox address not in the audit (minimal PII)
@@ -137,11 +137,13 @@ describe('ExternalCollaboratorProvisioningService', () => {
     await expect(svc.provision('ec-1', '100005')).rejects.toThrow('Authentik 500');
     expect(collaborators.markProvisioned).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(
-      '100005',
-      'external_collaborator.provision_failed',
-      'external_collaborator',
-      'ec-1',
-      expect.objectContaining({ error: 'Authentik 500' }),
+      expect.objectContaining({
+        actor: '100005',
+        action: 'external_collaborator.provision_failed',
+        entityType: 'external_collaborator',
+        entityId: 'ec-1',
+        detail: expect.objectContaining({ error: 'Authentik 500' }),
+      }),
     );
   });
 

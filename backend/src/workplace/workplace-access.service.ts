@@ -25,6 +25,7 @@ export class WorkplaceAccessService {
   private readonly log = new Logger(WorkplaceAccessService.name);
   private readonly cfg: AppConfig['lifecycle'];
 
+  // eslint-disable-next-line max-params -- NestJS DI constructor (injected dependencies, cannot be an options object)
   constructor(
     @InjectRepository(Identity) private readonly identities: Repository<Identity>,
     @InjectRepository(ExternalCollaborator)

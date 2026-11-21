@@ -56,6 +56,7 @@ export class LifecycleService {
   private readonly log = new Logger(LifecycleService.name);
   private readonly cfg: AppConfig['lifecycle'];
 
+  // eslint-disable-next-line max-params -- NestJS DI constructor (injected dependencies, cannot be an options object)
   constructor(
     @InjectRepository(Identity) private readonly identities: Repository<Identity>,
     @InjectRepository(Assignment) private readonly assignments: Repository<Assignment>,
@@ -84,18 +85,7 @@ export class LifecycleService {
     if (!id) {
       id = this.identities.create({ matricule: s.matricule, status: 'active' });
     }
-    id.fullName = s.employee_name ?? id.fullName ?? s.matricule;
-    id.department = s.department ?? id.department ?? null;
-    id.entity = s.entity ?? id.entity ?? null;
-    id.country = s.country ?? id.country ?? null;
-    id.job = s.job ?? id.job ?? null;
-    // ADR-014 — mirror the engagement. Update ONLY when the field is PRESENT in the event (an older
-    // producer omits it → keep existing). A null value is meaningful (e.g. a CDD→CDI conversion clears the
-    // contract end → no more scheduled expiry), so distinguish undefined (absent) from null (sent-as-empty).
-    if (s.employment_type !== undefined) id.employmentType = s.employment_type ?? null;
-    if (s.contract_end_date !== undefined) id.contractEndDate = s.contract_end_date ?? null;
-    id.status = 'active';
-    id.lastEventAt = ev.occurred_at ? new Date(ev.occurred_at) : new Date();
+    this.applyEventFieldsToIdentity(id, ev);
 
     // 1. derive the workplace email (collision-safe across employees AND external collaborators, ADR-015) —
     //    only once, kept stable afterwards
@@ -104,43 +94,78 @@ export class LifecycleService {
     }
     await this.identities.save(id); // persist early so the subject exists even if a leg later fails
 
-    // 2. Authentik user + birthright group (best-effort; skipped if Authentik not configured).
-    // Under the Mail↔Authentik LDAP federation (ADR-016) the user's MAILBOX **is** their Authentik email —
-    // Stalwart auto-creates the box on first delivery via LDAP; IAM must NOT create a Stalwart principal
-    // (`createMailbox` sets a local password → rejected for external-directory accounts, and redundant).
-    // So the single provisioning action is creating the Authentik user with `email = the company mailbox`.
-    if (!id.authentikProvisioned && this.authentik.configured) {
-      try {
-        await this.authentik.ensureUser(s.matricule, id.fullName, id.email);
-        await this.authentik.addUserToGroup(s.matricule, this.cfg.workplaceGroup);
-        // Set the shared INITIAL password ONCE — this block only runs the first time (authentikProvisioned
-        // guards it), so a later re-process never clobbers a password the employee rotated. One credential:
-        // the SSO login AND the mail login (Stalwart binds against Authentik via LDAP). Needs the elevated
-        // token; a blank default → no password set → the employee uses the recovery flow (ADR-016).
-        if (this.cfg.defaultMailboxPassword && this.authentik.canSetPassword) {
-          await this.authentik.setPassword(s.matricule, this.cfg.defaultMailboxPassword);
-          id.initialMailboxPassword = this.cfg.defaultMailboxPassword; // deliver-then-rotate (welcome flow)
-        }
-        id.authentikProvisioned = true;
-        id.mailboxProvisioned = true; // the Authentik user carries the mailbox address → box auto-provisions
-        await this.identities.save(id);
-      } catch (e) {
-        this.log.error(`authentik provisioning failed for ${s.matricule}: ${(e as Error).message}`);
-      }
-    }
+    await this.provisionAuthentik(id, s.matricule);
     this.log.log(
       `${ev.event} ${s.matricule} (${id.fullName}) → email=${id.email} mailbox=${id.mailboxProvisioned} authentik=${id.authentikProvisioned}`,
     );
 
-    // ADR-014 catch-up: a fixed-term engagement whose contract end is ALREADY past (e.g. a mover backdating
-    // the end) → revoke now rather than wait for the daily sweep (mirrors the leaver catch-up).
+    await this.maybeCatchUpContractEnd(id, s.matricule);
+  }
+
+  /** Mirror the event's subject fields onto the identity row (field-level `??` precedence + ADR-014). */
+  private applyEventFieldsToIdentity(id: Identity, ev: LifecycleEvent): void {
+    const s = ev.subject;
+    this.mirrorProfileFields(id, s);
+    // ADR-014 — mirror the engagement. Update ONLY when the field is PRESENT in the event (an older
+    // producer omits it → keep existing). A null value is meaningful (e.g. a CDD→CDI conversion clears the
+    // contract end → no more scheduled expiry), so distinguish undefined (absent) from null (sent-as-empty).
+    if (s.employment_type !== undefined) id.employmentType = s.employment_type ?? null;
+    if (s.contract_end_date !== undefined) id.contractEndDate = s.contract_end_date ?? null;
+    id.status = 'active';
+    id.lastEventAt = ev.occurred_at ? new Date(ev.occurred_at) : new Date();
+  }
+
+  /** Mirror the plain profile fields (event value → existing value → fallback). */
+  private mirrorProfileFields(id: Identity, s: LifecycleEvent['subject']): void {
+    id.fullName = s.employee_name ?? id.fullName ?? s.matricule;
+    // Each optional field: event value → existing value → null. Table-driven to keep this O(1) in
+    // cyclomatic complexity (the per-field `?? … ?? null` chains are otherwise each a branch).
+    const nullableFields = ['department', 'entity', 'country', 'job'] as const;
+    for (const f of nullableFields) {
+      id[f] = s[f] ?? id[f] ?? null;
+    }
+  }
+
+  /**
+   * Authentik user + birthright group (best-effort; skipped if Authentik not configured or already done).
+   * Under the Mail↔Authentik LDAP federation (ADR-016) the user's MAILBOX **is** their Authentik email —
+   * Stalwart auto-creates the box on first delivery via LDAP; IAM must NOT create a Stalwart principal
+   * (`createMailbox` sets a local password → rejected for external-directory accounts, and redundant).
+   * So the single provisioning action is creating the Authentik user with `email = the company mailbox`.
+   */
+  private async provisionAuthentik(id: Identity, matricule: string): Promise<void> {
+    if (id.authentikProvisioned || !this.authentik.configured) return;
+    try {
+      await this.authentik.ensureUser(matricule, id.fullName, id.email);
+      await this.authentik.addUserToGroup(matricule, this.cfg.workplaceGroup);
+      // Set the shared INITIAL password ONCE — this block only runs the first time (authentikProvisioned
+      // guards it), so a later re-process never clobbers a password the employee rotated. One credential:
+      // the SSO login AND the mail login (Stalwart binds against Authentik via LDAP). Needs the elevated
+      // token; a blank default → no password set → the employee uses the recovery flow (ADR-016).
+      if (this.cfg.defaultMailboxPassword && this.authentik.canSetPassword) {
+        await this.authentik.setPassword(matricule, this.cfg.defaultMailboxPassword);
+        id.initialMailboxPassword = this.cfg.defaultMailboxPassword; // deliver-then-rotate (welcome flow)
+      }
+      id.authentikProvisioned = true;
+      id.mailboxProvisioned = true; // the Authentik user carries the mailbox address → box auto-provisions
+      await this.identities.save(id);
+    } catch (e) {
+      this.log.error(`authentik provisioning failed for ${matricule}: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * ADR-014 catch-up: a fixed-term engagement whose contract end is ALREADY past (e.g. a mover backdating
+   * the end) → revoke now rather than wait for the daily sweep (mirrors the leaver catch-up).
+   */
+  private async maybeCatchUpContractEnd(id: Identity, matricule: string): Promise<void> {
     if (
       id.contractEndDate &&
       id.contractEndDate < todayStr() &&
       FIXED_TERM_TYPES.has(id.employmentType ?? '') &&
       !id.deprovisionedAt
     ) {
-      this.log.log(`contract-end (catch-up) ${s.matricule} → ended ${id.contractEndDate}, revoking now`);
+      this.log.log(`contract-end (catch-up) ${matricule} → ended ${id.contractEndDate}, revoking now`);
       await this.revokeAccess(id);
     }
   }
@@ -206,6 +231,18 @@ export class LifecycleService {
   private async revokeAccess(id: Identity): Promise<void> {
     if (id.deprovisionedAt) return; // already revoked — idempotent
     const m = id.matricule;
+    const active = await this.revokeActiveAssignments(m);
+    await this.removeAllAuthentikGroups(m);
+    await this.disableAuthentikUser(m);
+    await this.archiveMailbox(id, m);
+    id.status = 'left';
+    id.deprovisionedAt = new Date();
+    await this.identities.save(id);
+    this.log.log(`leaver ${m} → ACCESS REVOKED (assignments=${active.length}, groups removed, user disabled, mailbox archived)`);
+  }
+
+  /** Revoke every active DB assignment + remove its business Authentik group (best-effort per leg). */
+  private async revokeActiveAssignments(m: string): Promise<Assignment[]> {
     const active = await this.assignments.find({ where: { userId: m, status: 'active' }, relations: { role: true } });
     for (const a of active) {
       try {
@@ -218,18 +255,32 @@ export class LifecycleService {
       a.revokedAt = new Date();
       await this.assignments.save(a);
     }
+    return active;
+  }
+
+  /** Remove the user from ALL remaining Authentik groups (incl. the Workplace Users birthright). */
+  private async removeAllAuthentikGroups(m: string): Promise<void> {
     try {
       for (const g of await this.authentik.getUserGroups(m)) await this.authentik.removeUserFromGroup(m, g);
     } catch (e) {
       this.log.error(`revoke: group removal failed for ${m}: ${(e as Error).message}`);
     }
+  }
+
+  /** Disable the Authentik user (is_active=false) — the catch-all that blocks every SSO app. */
+  private async disableAuthentikUser(m: string): Promise<void> {
     try {
       await this.authentik.disableUser(m);
     } catch (e) {
       this.log.error(`revoke: disable user failed for ${m}: ${(e as Error).message}`);
     }
-    // archive the mailbox too — Authentik disable blocks browser/SSO mail, but the Stalwart principal
-    // still accepts direct IMAP/SMTP with the mailbox password until its credentials are cleared.
+  }
+
+  /**
+   * Archive the mailbox — Authentik disable blocks browser/SSO mail, but the Stalwart principal still
+   * accepts direct IMAP/SMTP with the mailbox password until its credentials are cleared.
+   */
+  private async archiveMailbox(id: Identity, m: string): Promise<void> {
     if (id.email && this.stalwart.configured) {
       try {
         await this.stalwart.disableMailbox(id.email);
@@ -237,9 +288,5 @@ export class LifecycleService {
         this.log.error(`revoke: disable mailbox failed for ${m}: ${(e as Error).message}`);
       }
     }
-    id.status = 'left';
-    id.deprovisionedAt = new Date();
-    await this.identities.save(id);
-    this.log.log(`leaver ${m} → ACCESS REVOKED (assignments=${active.length}, groups removed, user disabled, mailbox archived)`);
   }
 }

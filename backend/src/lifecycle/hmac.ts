@@ -19,25 +19,39 @@ export function canonicalJson(v: unknown): string {
   return '{' + keys.map((k) => pyStr(k) + ':' + canonicalJson(o[k])).join(',') + '}';
 }
 
+/** The short escape sequences Python's json uses for these exact code points. */
+const PY_SHORT_ESCAPES: Record<number, string> = {
+  8: '\\b',
+  9: '\\t',
+  10: '\\n',
+  12: '\\f',
+  13: '\\r',
+  0x22: '\\"', // "
+  0x5c: '\\\\', // backslash
+};
+
+/** `\uXXXX` for a BMP code point, or a surrogate pair `\uXXXX\uXXXX` for an astral one. */
+function uEscape(c: number): string {
+  if (c > 0xffff) {
+    const h = Math.floor((c - 0x10000) / 0x400) + 0xd800;
+    const l = ((c - 0x10000) % 0x400) + 0xdc00;
+    return '\\u' + h.toString(16).padStart(4, '0') + '\\u' + l.toString(16).padStart(4, '0');
+  }
+  return '\\u' + c.toString(16).padStart(4, '0');
+}
+
+/** Escape a single character exactly as Python's `json.dumps(ensure_ascii=True)` would. */
+function pyChar(ch: string, c: number): string {
+  const short = PY_SHORT_ESCAPES[c];
+  if (short) return short;
+  if (c < 0x20) return uEscape(c);
+  if (c < 0x80) return ch;
+  return uEscape(c);
+}
+
 function pyStr(s: string): string {
   let o = '"';
-  for (const ch of s) {
-    const c = ch.codePointAt(0)!;
-    if (ch === '"') o += '\\"';
-    else if (ch === '\\') o += '\\\\';
-    else if (c === 8) o += '\\b';
-    else if (c === 9) o += '\\t';
-    else if (c === 10) o += '\\n';
-    else if (c === 12) o += '\\f';
-    else if (c === 13) o += '\\r';
-    else if (c < 0x20) o += '\\u' + c.toString(16).padStart(4, '0');
-    else if (c < 0x80) o += ch;
-    else if (c > 0xffff) {
-      const h = Math.floor((c - 0x10000) / 0x400) + 0xd800;
-      const l = ((c - 0x10000) % 0x400) + 0xdc00;
-      o += '\\u' + h.toString(16).padStart(4, '0') + '\\u' + l.toString(16).padStart(4, '0');
-    } else o += '\\u' + c.toString(16).padStart(4, '0');
-  }
+  for (const ch of s) o += pyChar(ch, ch.codePointAt(0)!);
   return o + '"';
 }
 

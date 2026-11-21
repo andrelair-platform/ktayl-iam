@@ -49,10 +49,10 @@ export class CatalogService {
         description: dto.description ?? null,
       }),
     );
-    await this.audit.record(actor, 'application.created', 'application', app.id, {
+    await this.audit.record({ actor: actor, action: 'application.created', entityType: 'application', entityId: app.id, detail: {
       name: app.name,
       tier: app.tier,
-    });
+    } });
     return app;
   }
 
@@ -74,12 +74,12 @@ export class CatalogService {
         description: dto.description ?? null,
       }),
     );
-    await this.audit.record(actor, 'role.created', 'role', role.id, {
+    await this.audit.record({ actor: actor, action: 'role.created', entityType: 'role', entityId: role.id, detail: {
       application: app.name,
       role: role.name,
       owner: role.owner,
       authentikGroupRef: role.authentikGroupRef,
-    });
+    } });
     return role;
   }
 

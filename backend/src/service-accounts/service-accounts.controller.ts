@@ -88,7 +88,7 @@ export class ServiceAccountsController {
     // ALLOW_APPROVER_OVERRIDE (dev only) lets an admin act as a specific approver to demo both legs;
     // the server still rejects self-approval + any approver not on a leg. The signed-in user is audited.
     const approver = this.allowOverride && dto.approver ? dto.approver : actor;
-    return this.workflow.decide(id, approver, dto.decision, dto.comment, actor);
+    return this.workflow.decide({ requestId: id, approver: approver, decision: dto.decision, comment: dto.comment, actor: actor });
   }
 
   /**

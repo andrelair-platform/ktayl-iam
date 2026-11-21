@@ -77,11 +77,11 @@ describe('WorkflowService — dual approval (S004, ADR-007)', () => {
 
   it('grants only after BOTH approve, order-independent → active assignment + provision (AC-1/AC-5)', async () => {
     await createReq();
-    const afterOwner = await ctx.svc.decide('req-1', OWNER, 'approved', 'ok', OWNER);
+    const afterOwner = await ctx.svc.decide({ requestId: 'req-1', approver: OWNER, decision: 'approved', comment: 'ok', actor: OWNER });
     expect(afterOwner.status).toBe('pending'); // one leg only
     expect(ctx.sync.provision).not.toHaveBeenCalled();
 
-    const afterManager = await ctx.svc.decide('req-1', MANAGER, 'approved', 'ok', MANAGER);
+    const afterManager = await ctx.svc.decide({ requestId: 'req-1', approver: MANAGER, decision: 'approved', comment: 'ok', actor: MANAGER });
     expect(afterManager.status).toBe('approved');
     expect(ctx.assignmentsStore).toHaveLength(1);
     expect(ctx.assignmentsStore[0]).toMatchObject({ userId: REQUESTER, roleId: ROLE.id, status: 'active' });
@@ -90,8 +90,8 @@ describe('WorkflowService — dual approval (S004, ADR-007)', () => {
 
   it('either denial rejects the whole request and provisions nothing (AC-2)', async () => {
     await createReq();
-    await ctx.svc.decide('req-1', MANAGER, 'approved', undefined, MANAGER);
-    const denied = await ctx.svc.decide('req-1', OWNER, 'denied', 'no', OWNER);
+    await ctx.svc.decide({ requestId: 'req-1', approver: MANAGER, decision: 'approved', comment: undefined, actor: MANAGER });
+    const denied = await ctx.svc.decide({ requestId: 'req-1', approver: OWNER, decision: 'denied', comment: 'no', actor: OWNER });
     expect(denied.status).toBe('denied');
     expect(ctx.assignmentsStore).toHaveLength(0);
     expect(ctx.sync.provision).not.toHaveBeenCalled();
@@ -99,22 +99,22 @@ describe('WorkflowService — dual approval (S004, ADR-007)', () => {
 
   it('rejects self-approval server-side (AC-4)', async () => {
     await createReq();
-    await expect(ctx.svc.decide('req-1', REQUESTER, 'approved', undefined, REQUESTER)).rejects.toBeInstanceOf(
+    await expect(ctx.svc.decide({ requestId: 'req-1', approver: REQUESTER, decision: 'approved', comment: undefined, actor: REQUESTER })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
 
   it('rejects a decision from someone who is not an assigned approver', async () => {
     await createReq();
-    await expect(ctx.svc.decide('req-1', '900055', 'approved', undefined, '900055')).rejects.toBeInstanceOf(
+    await expect(ctx.svc.decide({ requestId: 'req-1', approver: '900055', decision: 'approved', comment: undefined, actor: '900055' })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
 
   it('refuses to re-decide a request that is already resolved', async () => {
     await createReq();
-    await ctx.svc.decide('req-1', MANAGER, 'denied', undefined, MANAGER); // → denied
-    await expect(ctx.svc.decide('req-1', OWNER, 'approved', undefined, OWNER)).rejects.toBeInstanceOf(
+    await ctx.svc.decide({ requestId: 'req-1', approver: MANAGER, decision: 'denied', comment: undefined, actor: MANAGER }); // → denied
+    await expect(ctx.svc.decide({ requestId: 'req-1', approver: OWNER, decision: 'approved', comment: undefined, actor: OWNER })).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
@@ -133,7 +133,7 @@ describe('WorkflowService — dual approval (S004, ADR-007)', () => {
 
     it('refuses to cancel a request that is no longer pending', async () => {
       await createReq();
-      await ctx.svc.decide('req-1', MANAGER, 'denied', undefined, MANAGER); // → denied
+      await ctx.svc.decide({ requestId: 'req-1', approver: MANAGER, decision: 'denied', comment: undefined, actor: MANAGER }); // → denied
       await expect(ctx.svc.cancel('req-1', REQUESTER)).rejects.toBeInstanceOf(ConflictException);
     });
   });

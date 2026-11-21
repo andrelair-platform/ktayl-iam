@@ -36,6 +36,7 @@ export class WorkflowService {
   private readonly log = new Logger(WorkflowService.name);
   private readonly backupApprover: string;
 
+  // eslint-disable-next-line max-params -- NestJS DI constructor (injected dependencies, cannot be an options object)
   constructor(
     @InjectRepository(AccessRequest)
     private readonly requests: Repository<AccessRequest>,
@@ -86,7 +87,7 @@ export class WorkflowService {
       }),
     );
 
-    await this.audit.record(actor, 'request.created', 'request', req.id, {
+    await this.audit.record({ actor: actor, action: 'request.created', entityType: 'request', entityId: req.id, detail: {
       requester: requesterId,
       application: role.application.name,
       role: role.name,
@@ -96,7 +97,7 @@ export class WorkflowService {
       managerFallback: mgr.fallback,
       reassignments: resolution.notes,
       needsManualReview: resolution.needsManualReview,
-    });
+    } });
     return req;
   }
 
@@ -120,11 +121,11 @@ export class WorkflowService {
     for (const roleId of unique) {
       requests.push(await this.createRequest(requesterId, roleId, actor, batch));
     }
-    await this.audit.record(actor, 'request.batch_created', 'request_batch', batchId, {
+    await this.audit.record({ actor: actor, action: 'request.batch_created', entityType: 'request_batch', entityId: batchId, detail: {
       requester: requesterId,
       roleCount: unique.length,
       label: label ?? null,
-    });
+    } });
     return { batchId, label: label ?? null, requests };
   }
 
@@ -166,34 +167,16 @@ export class WorkflowService {
    * self-approval; the approver actually owns an un-decided leg. Either denial rejects the whole
    * request; both approvals → `approved` + an `active` (pending-sync) Assignment handed to S005.
    */
-  async decide(
-    requestId: string,
-    approver: string,
-    decision: 'approved' | 'denied',
-    comment: string | undefined,
-    actor: string,
-  ): Promise<AccessRequest> {
-    const req = await this.requests.findOne({
-      where: { id: requestId },
-      relations: { role: { application: true } },
-    });
-    if (!req) throw new NotFoundException(`request ${requestId} not found`);
-    if (req.status !== 'pending') {
-      throw new ConflictException(`request is already ${req.status} and cannot be decided again`);
-    }
-    // AC-4 (defence-in-depth beyond the at-creation reassignment): never self-approve.
-    if (approver === req.requesterId) {
-      throw new ForbiddenException('no self-approval: the requester cannot approve their own request');
-    }
-
-    const legs: Leg[] = [];
-    if (approver === req.managerApprover && !req.managerDecision) legs.push('manager');
-    if (approver === req.ownerApprover && !req.ownerDecision) legs.push('owner');
-    if (legs.length === 0) {
-      throw new ForbiddenException(
-        'you are not an assigned approver for this request, or your leg is already decided',
-      );
-    }
+  async decide(opts: {
+    requestId: string;
+    approver: string;
+    decision: 'approved' | 'denied';
+    comment: string | undefined;
+    actor: string;
+  }): Promise<AccessRequest> {
+    const { requestId, approver, decision, comment, actor } = opts;
+    const req = await this.loadDecidableRequest(requestId, approver);
+    const legs = this.resolveApproverLegs(req, approver);
 
     const entry: ApprovalDecision = {
       approver,
@@ -201,22 +184,13 @@ export class WorkflowService {
       at: new Date().toISOString(),
       ...(comment ? { comment } : {}),
     };
-    for (const leg of legs) {
-      if (leg === 'manager') req.managerDecision = entry;
-      else req.ownerDecision = entry;
-      await this.audit.record(actor, `request.${leg}_${decision}`, 'request', req.id, {
-        approver,
-        leg,
-        decision,
-        comment: comment ?? null,
-      });
-    }
+    await this.applyLegDecisions(req, legs, entry, { actor, approver, decision, comment });
 
     // AC-2: either denial rejects the whole request; nothing is provisioned.
     if (decision === 'denied') {
       req.status = 'denied';
       await this.requests.save(req);
-      await this.audit.record(actor, 'request.denied', 'request', req.id, { by: approver, legs });
+      await this.audit.record({ actor: actor, action: 'request.denied', entityType: 'request', entityId: req.id, detail: { by: approver, legs } });
       return req;
     }
 
@@ -232,16 +206,65 @@ export class WorkflowService {
     req.status = 'approved';
     await this.requests.save(req);
     const assignment = await this.grant(req.requesterId, req.roleId, 'workflow:both-approved');
-    await this.audit.record(actor, 'request.approved', 'request', req.id, {
+    await this.audit.record({ actor: actor, action: 'request.approved', entityType: 'request', entityId: req.id, detail: {
       requester: req.requesterId,
       assignmentId: assignment.id,
-    });
+    } });
     // AC-5: provisioning to Authentik happens ONLY now, via S005. A failed sync does not lose the
     // assignment (it stays active/pending-sync); the reconcile job heals it (AVL-3).
     await this.sync.provision(assignment).catch((e) => {
       this.log.warn(`provision of assignment ${assignment.id} failed (will reconcile): ${e}`);
     });
     return req;
+  }
+
+  /** Load a request that is in a decidable state (exists, pending, not self-approved). */
+  private async loadDecidableRequest(requestId: string, approver: string): Promise<AccessRequest> {
+    const req = await this.requests.findOne({
+      where: { id: requestId },
+      relations: { role: { application: true } },
+    });
+    if (!req) throw new NotFoundException(`request ${requestId} not found`);
+    if (req.status !== 'pending') {
+      throw new ConflictException(`request is already ${req.status} and cannot be decided again`);
+    }
+    // AC-4 (defence-in-depth beyond the at-creation reassignment): never self-approve.
+    if (approver === req.requesterId) {
+      throw new ForbiddenException('no self-approval: the requester cannot approve their own request');
+    }
+    return req;
+  }
+
+  /** The undecided approval legs this approver is assigned to (throws if none). */
+  private resolveApproverLegs(req: AccessRequest, approver: string): Leg[] {
+    const legs: Leg[] = [];
+    if (approver === req.managerApprover && !req.managerDecision) legs.push('manager');
+    if (approver === req.ownerApprover && !req.ownerDecision) legs.push('owner');
+    if (legs.length === 0) {
+      throw new ForbiddenException(
+        'you are not an assigned approver for this request, or your leg is already decided',
+      );
+    }
+    return legs;
+  }
+
+  /** Record the decision on each leg + its audit entry. */
+  private async applyLegDecisions(
+    req: AccessRequest,
+    legs: Leg[],
+    entry: ApprovalDecision,
+    ctx: { actor: string; approver: string; decision: 'approved' | 'denied'; comment: string | undefined },
+  ): Promise<void> {
+    for (const leg of legs) {
+      if (leg === 'manager') req.managerDecision = entry;
+      else req.ownerDecision = entry;
+      await this.audit.record({ actor: ctx.actor, action: `request.${leg}_${ctx.decision}`, entityType: 'request', entityId: req.id, detail: {
+        approver: ctx.approver,
+        leg,
+        decision: ctx.decision,
+        comment: ctx.comment ?? null,
+      } });
+    }
   }
 
   /** Idempotently create (or re-activate) the active Assignment for a user+role. */
@@ -314,7 +337,7 @@ export class WorkflowService {
     }
     req.status = 'cancelled';
     await this.requests.save(req);
-    await this.audit.record(actor, 'request.cancelled', 'request', req.id, { by: actor });
+    await this.audit.record({ actor: actor, action: 'request.cancelled', entityType: 'request', entityId: req.id, detail: { by: actor } });
     return req;
   }
 
@@ -327,10 +350,10 @@ export class WorkflowService {
     a.revokedBy = actor;
     a.revokedAt = new Date();
     await this.assignments.save(a);
-    await this.audit.record(actor, 'assignment.revoked', 'assignment', a.id, {
+    await this.audit.record({ actor: actor, action: 'assignment.revoked', entityType: 'assignment', entityId: a.id, detail: {
       user: a.userId,
       roleId: a.roleId,
-    });
+    } });
     await this.sync.revoke(a).catch((e) => {
       this.log.warn(`revoke of assignment ${a.id} failed (will reconcile): ${e}`);
     });

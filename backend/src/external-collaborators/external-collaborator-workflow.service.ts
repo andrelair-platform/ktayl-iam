@@ -49,6 +49,7 @@ export class ExternalCollaboratorWorkflowService {
   private readonly securityApprover: string;
   private readonly backupApprover: string;
 
+  // eslint-disable-next-line max-params -- NestJS DI constructor (injected dependencies, cannot be an options object)
   constructor(
     @InjectRepository(ExternalCollaboratorRequest)
     private readonly requests: Repository<ExternalCollaboratorRequest>,
@@ -106,12 +107,7 @@ export class ExternalCollaboratorWorkflowService {
       }),
     );
 
-    await this.audit.record(
-      actor,
-      'external_collaborator.requested',
-      'external_collaborator_request',
-      req.id,
-      {
+    await this.audit.record({ actor: actor, action: 'external_collaborator.requested', entityType: 'external_collaborator_request', entityId: req.id, detail: {
         collaborator: collaborator.name,
         company: collaborator.company ?? 'freelance',
         sponsor: input.sponsorMatricule,
@@ -122,38 +118,21 @@ export class ExternalCollaboratorWorkflowService {
         purpose: collaborator.purpose,
         reassignments: resolution.notes,
         needsManualReview: resolution.needsManualReview,
-      },
-    );
+      } });
     return req;
   }
 
   /** Record an approver's decision on their leg. Either denial rejects; both-approved → `approved`. */
-  async decide(
-    requestId: string,
-    approver: string,
-    decision: 'approved' | 'denied',
-    comment: string | undefined,
-    actor: string,
-  ): Promise<ExternalCollaboratorRequest> {
-    const req = await this.requests.findOne({ where: { id: requestId } });
-    if (!req) {
-      throw new NotFoundException(`external-collaborator request ${requestId} not found`);
-    }
-    if (req.status !== 'pending') {
-      throw new ConflictException(`request is already ${req.status} and cannot be decided again`);
-    }
-    if (approver === req.requesterId) {
-      throw new ForbiddenException('no self-approval: the requester cannot approve their own request');
-    }
-
-    const legs: EcLeg[] = [];
-    if (approver === req.securityApprover && !req.securityDecision) legs.push('security');
-    if (approver === req.sponsorApprover && !req.sponsorDecision) legs.push('sponsor');
-    if (legs.length === 0) {
-      throw new ForbiddenException(
-        'you are not an assigned approver for this request, or your leg is already decided',
-      );
-    }
+  async decide(opts: {
+    requestId: string;
+    approver: string;
+    decision: 'approved' | 'denied';
+    comment: string | undefined;
+    actor: string;
+  }): Promise<ExternalCollaboratorRequest> {
+    const { requestId, approver, decision, comment, actor } = opts;
+    const req = await this.loadDecidableRequest(requestId, approver);
+    const legs = this.resolveApproverLegs(req, approver);
 
     const entry: EcApprovalDecision = {
       approver,
@@ -161,28 +140,12 @@ export class ExternalCollaboratorWorkflowService {
       at: new Date().toISOString(),
       ...(comment ? { comment } : {}),
     };
-    for (const leg of legs) {
-      if (leg === 'security') req.securityDecision = entry;
-      else req.sponsorDecision = entry;
-      await this.audit.record(
-        actor,
-        `external_collaborator.${leg}_${decision}`,
-        'external_collaborator_request',
-        req.id,
-        { approver, leg, decision, comment: comment ?? null },
-      );
-    }
+    await this.applyLegDecisions(req, legs, entry, { actor, approver, decision, comment });
 
     if (decision === 'denied') {
       req.status = 'denied';
       await this.requests.save(req);
-      await this.audit.record(
-        actor,
-        'external_collaborator.denied',
-        'external_collaborator_request',
-        req.id,
-        { by: approver, legs },
-      );
+      await this.audit.record({ actor: actor, action: 'external_collaborator.denied', entityType: 'external_collaborator_request', entityId: req.id, detail: { by: approver, legs } });
       return req;
     }
 
@@ -195,13 +158,7 @@ export class ExternalCollaboratorWorkflowService {
 
     req.status = 'approved';
     await this.requests.save(req);
-    await this.audit.record(
-      actor,
-      'external_collaborator.approved',
-      'external_collaborator_request',
-      req.id,
-      { collaboratorId: req.collaboratorId },
-    );
+    await this.audit.record({ actor: actor, action: 'external_collaborator.approved', entityType: 'external_collaborator_request', entityId: req.id, detail: { collaboratorId: req.collaboratorId } });
 
     // S027 — best-effort provision to Authentik now the four-eyes gate has cleared. A failure is
     // retryable (POST /collaborators/:id/provision), audited, and does NOT un-approve the decision.
@@ -217,6 +174,51 @@ export class ExternalCollaboratorWorkflowService {
       this.log.log(`external-collaborator request ${req.id} approved — awaiting provisioning (S027)`);
     }
     return req;
+  }
+
+  /** Load a request that is in a decidable state (exists, pending, not self-approved). */
+  private async loadDecidableRequest(
+    requestId: string,
+    approver: string,
+  ): Promise<ExternalCollaboratorRequest> {
+    const req = await this.requests.findOne({ where: { id: requestId } });
+    if (!req) {
+      throw new NotFoundException(`external-collaborator request ${requestId} not found`);
+    }
+    if (req.status !== 'pending') {
+      throw new ConflictException(`request is already ${req.status} and cannot be decided again`);
+    }
+    if (approver === req.requesterId) {
+      throw new ForbiddenException('no self-approval: the requester cannot approve their own request');
+    }
+    return req;
+  }
+
+  /** The undecided approval legs this approver is assigned to (throws if none). */
+  private resolveApproverLegs(req: ExternalCollaboratorRequest, approver: string): EcLeg[] {
+    const legs: EcLeg[] = [];
+    if (approver === req.securityApprover && !req.securityDecision) legs.push('security');
+    if (approver === req.sponsorApprover && !req.sponsorDecision) legs.push('sponsor');
+    if (legs.length === 0) {
+      throw new ForbiddenException(
+        'you are not an assigned approver for this request, or your leg is already decided',
+      );
+    }
+    return legs;
+  }
+
+  /** Record the decision on each leg + its audit entry. */
+  private async applyLegDecisions(
+    req: ExternalCollaboratorRequest,
+    legs: EcLeg[],
+    entry: EcApprovalDecision,
+    ctx: { actor: string; approver: string; decision: 'approved' | 'denied'; comment: string | undefined },
+  ): Promise<void> {
+    for (const leg of legs) {
+      if (leg === 'security') req.securityDecision = entry;
+      else req.sponsorDecision = entry;
+      await this.audit.record({ actor: ctx.actor, action: `external_collaborator.${leg}_${ctx.decision}`, entityType: 'external_collaborator_request', entityId: req.id, detail: { approver: ctx.approver, leg, decision: ctx.decision, comment: ctx.comment ?? null } });
+    }
   }
 
   findById(id: string): Promise<ExternalCollaboratorRequest | null> {
