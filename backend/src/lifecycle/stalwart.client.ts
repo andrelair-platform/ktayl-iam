@@ -2,6 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../config/configuration.js';
 
+/** The payload object of the first JMAP method response (`methodResponses[0][1]`), or undefined. */
+function firstResponsePayload(r: any): any {
+  return r.methodResponses?.[0]?.[1];
+}
+
 /**
  * Stalwart mailbox provisioning via JMAP (verified recipe — Stalwart v0.16 manages principals over
  * `POST /jmap/` with the `urn:ietf:params:jmap:principals` capability, HTTP Basic admin auth; the
@@ -44,13 +49,13 @@ export class StalwartClient {
   /** Resolve the management domainId for the configured mail domain (Stalwart uses short ids). */
   private async domainId(): Promise<string> {
     const r = await this.jmap([['x:Domain/query', { accountId: 'a', filter: {}, limit: 50 }, '0']]);
-    const ids: string[] = r.methodResponses?.[0]?.[1]?.ids ?? [];
+    const ids: string[] = firstResponsePayload(r)?.ids ?? [];
     // single-domain deployment → the one id; if multiple, resolve by name
     if (ids.length === 1) return ids[0];
     const got = await this.jmap([
       ['x:Domain/get', { accountId: 'a', ids, properties: ['id', 'name'] }, '0'],
     ]);
-    const list = got.methodResponses?.[0]?.[1]?.list ?? [];
+    const list = firstResponsePayload(got)?.list ?? [];
     const match = list.find((d: any) => d.name === this.domain);
     if (!match) throw new Error(`Stalwart: domain ${this.domain} not found`);
     return match.id;

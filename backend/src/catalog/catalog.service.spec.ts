@@ -32,7 +32,9 @@ describe('CatalogService.createApplication', () => {
       ACTOR,
     );
     expect(app.id).toBe('app-1');
-    expect(audit.record).toHaveBeenCalledWith(ACTOR, 'application.created', 'application', 'app-1', expect.any(Object));
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: ACTOR, action: 'application.created', entityType: 'application', entityId: 'app-1', detail: expect.any(Object) }),
+    );
   });
 
   it('rejects a duplicate application name (409)', async () => {
@@ -52,7 +54,9 @@ describe('CatalogService.addRole', () => {
     const role = await svc.addRole('app-1', ROLE, ACTOR);
     expect(role).toMatchObject({ owner: '900001', authentikGroupRef: 'ktayl-observability-admin' });
     expect(roles.save).toHaveBeenCalled();
-    expect(audit.record).toHaveBeenCalledWith(ACTOR, 'role.created', 'role', 'role-1', expect.objectContaining({ owner: '900001' }));
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: ACTOR, action: 'role.created', entityType: 'role', entityId: 'role-1', detail: expect.objectContaining({ owner: '900001' }) }),
+    );
   });
 
   it('AC-4: rejects a role with no owner (400) and never persists it', async () => {

@@ -52,7 +52,7 @@ describe('ServiceAccountProvisioningService', () => {
     expect(accounts.markProvisioned).toHaveBeenCalledWith('sa-1', 'ktayl-qa-finance', 'secret/platform/service-accounts/ktayl-qa-finance');
     expect(out.status).toBe('active');
 
-    const [, action, , , detail] = audit.record.mock.calls.at(-1)!;
+    const { action, detail } = audit.record.mock.calls.at(-1)![0];
     expect(action).toBe('service_account.provisioned');
     expect(detail.vaultSecretRef).toBe('secret/platform/service-accounts/ktayl-qa-finance');
     expect(JSON.stringify(detail)).not.toContain('ak-token-secret'); // the SECRET never reaches the audit log
@@ -82,7 +82,7 @@ describe('ServiceAccountProvisioningService', () => {
     vault.store.mockResolvedValueOnce({ ref: 'secret/platform/service-accounts/ktayl-qa-finance', written: false });
     const out = await svc.provision('sa-1', '100005');
     expect(out.status).toBe('active');
-    const detail = audit.record.mock.calls.at(-1)![4];
+    const detail = audit.record.mock.calls.at(-1)![0].detail;
     expect(detail.secretWritten).toBe(false);
   });
 
@@ -92,11 +92,13 @@ describe('ServiceAccountProvisioningService', () => {
     await expect(svc.provision('sa-1', '100005')).rejects.toThrow('Authentik 500');
     expect(accounts.markProvisioned).not.toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(
-      '100005',
-      'service_account.provision_failed',
-      'service_account',
-      'sa-1',
-      expect.objectContaining({ error: 'Authentik 500' }),
+      expect.objectContaining({
+        actor: '100005',
+        action: 'service_account.provision_failed',
+        entityType: 'service_account',
+        entityId: 'sa-1',
+        detail: expect.objectContaining({ error: 'Authentik 500' }),
+      }),
     );
   });
 

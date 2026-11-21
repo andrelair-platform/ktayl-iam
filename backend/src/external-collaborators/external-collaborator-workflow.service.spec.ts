@@ -73,11 +73,13 @@ describe('ExternalCollaboratorWorkflowService.fileRequest', () => {
     );
     expect(req).toMatchObject({ securityApprover: SECURITY, sponsorApprover: SPONSOR, status: 'pending' });
     expect(audit.record).toHaveBeenCalledWith(
-      ADMIN,
-      'external_collaborator.requested',
-      'external_collaborator_request',
-      'req-1',
-      expect.objectContaining({ sponsor: SPONSOR, securityApprover: SECURITY }),
+      expect.objectContaining({
+        actor: ADMIN,
+        action: 'external_collaborator.requested',
+        entityType: 'external_collaborator_request',
+        entityId: 'req-1',
+        detail: expect.objectContaining({ sponsor: SPONSOR, securityApprover: SECURITY }),
+      }),
     );
   });
 
@@ -117,23 +119,23 @@ describe('ExternalCollaboratorWorkflowService.decide', () => {
   it('needs BOTH legs — one approval stays pending, both → approved', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    const afterOne = await svc.decide('req-1', SECURITY, 'approved', undefined, SECURITY);
+    const afterOne = await svc.decide({ requestId: 'req-1', approver: SECURITY, decision: 'approved', comment: undefined, actor: SECURITY });
     expect(afterOne.status).toBe('pending');
-    const afterBoth = await svc.decide('req-1', SPONSOR, 'approved', undefined, SPONSOR);
+    const afterBoth = await svc.decide({ requestId: 'req-1', approver: SPONSOR, decision: 'approved', comment: undefined, actor: SPONSOR });
     expect(afterBoth.status).toBe('approved');
   });
 
   it('either denial rejects the whole request', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    const r = await svc.decide('req-1', SPONSOR, 'denied', 'scope too broad', SPONSOR);
+    const r = await svc.decide({ requestId: 'req-1', approver: SPONSOR, decision: 'denied', comment: 'scope too broad', actor: SPONSOR });
     expect(r.status).toBe('denied');
   });
 
   it('rejects self-approval (approver == requester)', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    await expect(svc.decide('req-1', ADMIN, 'approved', undefined, ADMIN)).rejects.toBeInstanceOf(
+    await expect(svc.decide({ requestId: 'req-1', approver: ADMIN, decision: 'approved', comment: undefined, actor: ADMIN })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
@@ -141,7 +143,7 @@ describe('ExternalCollaboratorWorkflowService.decide', () => {
   it('rejects a non-assigned approver', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    await expect(svc.decide('req-1', '999999', 'approved', undefined, '999999')).rejects.toBeInstanceOf(
+    await expect(svc.decide({ requestId: 'req-1', approver: '999999', decision: 'approved', comment: undefined, actor: '999999' })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
@@ -149,7 +151,7 @@ describe('ExternalCollaboratorWorkflowService.decide', () => {
   it('rejects deciding an already-decided request (409)', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue({ ...shared, status: 'approved' });
-    await expect(svc.decide('req-1', SECURITY, 'approved', undefined, SECURITY)).rejects.toBeInstanceOf(
+    await expect(svc.decide({ requestId: 'req-1', approver: SECURITY, decision: 'approved', comment: undefined, actor: SECURITY })).rejects.toBeInstanceOf(
       ConflictException,
     );
   });

@@ -57,20 +57,14 @@ export class ExternalCollaboratorService {
         status: 'requested',
       }),
     );
-    await this.audit.record(
-      input.createdBy,
-      'external_collaborator.created',
-      'external_collaborator',
-      c.id,
-      {
+    await this.audit.record({ actor: input.createdBy, action: 'external_collaborator.created', entityType: 'external_collaborator', entityId: c.id, detail: {
         name: c.name,
         type: c.type,
         company: c.company ?? 'freelance',
         sponsor: c.sponsorMatricule,
         groups: c.groupRefs,
         expiresAt: c.expiresAt?.toISOString() ?? null,
-      },
-    );
+      } });
     return c;
   }
 
@@ -101,9 +95,9 @@ export class ExternalCollaboratorService {
     if (c.hrWorkerRef === ref) return c;
     c.hrWorkerRef = ref;
     const saved = await this.repo.save(c);
-    await this.audit.record(actor, 'external_collaborator.hr_worker_bound', 'external_collaborator', id, {
+    await this.audit.record({ actor: actor, action: 'external_collaborator.hr_worker_bound', entityType: 'external_collaborator', entityId: id, detail: {
       hrWorkerRef: ref,
-    });
+    } });
     return saved;
   }
 
@@ -145,10 +139,10 @@ export class ExternalCollaboratorService {
     c.expiresAt = new Date(Date.now() + d * 24 * 60 * 60 * 1000);
     c.lastRecertifiedAt = new Date();
     const saved = await this.repo.save(c);
-    await this.audit.record(actor, 'external_collaborator.renewed', 'external_collaborator', id, {
+    await this.audit.record({ actor: actor, action: 'external_collaborator.renewed', entityType: 'external_collaborator', entityId: id, detail: {
       days: d,
       expiresAt: c.expiresAt.toISOString(),
-    });
+    } });
     return saved;
   }
 
@@ -173,13 +167,7 @@ export class ExternalCollaboratorService {
     const c = await this.getById(id);
     c.status = status;
     const saved = await this.repo.save(c);
-    await this.audit.record(
-      actor,
-      `external_collaborator.${status}`,
-      'external_collaborator',
-      id,
-      {},
-    );
+    await this.audit.record({ actor: actor, action: `external_collaborator.${status}`, entityType: 'external_collaborator', entityId: id, detail: {} });
     return saved;
   }
 }

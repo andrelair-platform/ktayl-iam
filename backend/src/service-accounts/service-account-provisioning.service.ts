@@ -54,23 +54,23 @@ export class ServiceAccountProvisioningService {
       const stored = await this.vault.store(account.name, { token: key, username: account.name });
 
       const updated = await this.accounts.markProvisioned(account.id, account.name, stored.ref);
-      await this.audit.record(actor, 'service_account.provisioned', 'service_account', account.id, {
+      await this.audit.record({ actor: actor, action: 'service_account.provisioned', entityType: 'service_account', entityId: account.id, detail: {
         serviceAccount: account.name,
         authentikUsername: account.name,
         groups: account.groupRefs,
         vaultSecretRef: stored.ref,
         secretWritten: stored.written,
-      });
+      } });
       this.log.log(
         `provisioned service account "${account.name}" → groups [${account.groupRefs.join(', ')}], ref ${stored.ref}`,
       );
       return updated;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await this.audit.record(actor, 'service_account.provision_failed', 'service_account', account.id, {
+      await this.audit.record({ actor: actor, action: 'service_account.provision_failed', entityType: 'service_account', entityId: account.id, detail: {
         serviceAccount: account.name,
         error: message,
-      });
+      } });
       this.log.error(`provisioning "${account.name}" failed: ${message}`);
       throw err;
     }

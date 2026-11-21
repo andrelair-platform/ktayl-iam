@@ -154,6 +154,98 @@ export function validateEnv(env: Record<string, unknown>): Record<string, unknow
   return env;
 }
 
+type Env = Record<string, string | undefined>;
+
+function loadDatabase(e: Env): AppConfig['database'] {
+  return {
+    host: e.DATABASE_HOST as string,
+    port: Number(e.DATABASE_PORT ?? 5432),
+    user: e.DATABASE_USER as string,
+    password: e.DATABASE_PASSWORD as string,
+    name: e.DATABASE_NAME as string,
+  };
+}
+
+function loadOidc(e: Env): AppConfig['oidc'] {
+  return {
+    issuer: e.AUTHENTIK_ISSUER as string,
+    authorizationURL: e.AUTHENTIK_AUTH_URL as string,
+    tokenURL: e.AUTHENTIK_TOKEN_URL as string,
+    userInfoURL: e.AUTHENTIK_USERINFO_URL as string,
+    clientID: e.AUTHENTIK_CLIENT_ID as string,
+    clientSecret: e.AUTHENTIK_CLIENT_SECRET as string,
+    callbackURL: e.AUTHENTIK_CALLBACK_URL as string,
+    scope: e.AUTHENTIK_SCOPE ?? 'openid profile email groups',
+    // Real Authentik taxonomy — the admin group is "Platform Admins" (the old `ktayl-admin`
+    // default never existed and 401'd every login; the overlay already sets this).
+    adminGroup: e.ADMIN_GROUP ?? 'Platform Admins',
+    staffGroup: (e.STAFF_GROUP ?? '') as string, // empty = admit any authenticated user (S008)
+  };
+}
+
+function loadDirectory(e: Env): AppConfig['directory'] {
+  return {
+    authentikApiUrl: (e.AUTHENTIK_API_URL ?? authentikApiFromIssuer(e.AUTHENTIK_ISSUER)) as string,
+    authentikApiToken: (e.AUTHENTIK_API_TOKEN ?? '') as string,
+    authentikCredentialToken: (e.AUTHENTIK_CREDENTIAL_TOKEN ?? '') as string,
+    erpnextUrl: (e.ERPNEXT_URL ?? '') as string,
+    erpnextApiKey: (e.ERPNEXT_API_KEY ?? '') as string,
+    erpnextApiSecret: (e.ERPNEXT_API_SECRET ?? '') as string,
+    fallbackApprover: (e.FALLBACK_APPROVER ?? '') as string,
+    securityApprover: (e.SECURITY_APPROVER ?? e.FALLBACK_APPROVER ?? '') as string,
+  };
+}
+
+function loadVault(e: Env): AppConfig['vault'] {
+  return {
+    addr: (e.VAULT_ADDR ?? '') as string,
+    token: (e.VAULT_TOKEN ?? '') as string,
+    mount: (e.VAULT_KV_MOUNT ?? 'secret') as string,
+    basePath: (e.VAULT_SA_BASE_PATH ?? 'platform/service-accounts') as string,
+  };
+}
+
+function loadSync(e: Env): AppConfig['sync'] {
+  return {
+    exclusiveGroups: String(e.RECONCILE_EXCLUSIVE_GROUPS ?? '')
+      .split(',')
+      .map((g) => g.trim())
+      .filter(Boolean),
+  };
+}
+
+function loadLifecycleMail(e: Env): Pick<
+  AppConfig['lifecycle'],
+  'stalwartJmapUrl' | 'stalwartAdminUser' | 'stalwartAdminSecret' | 'mailDomain' | 'defaultMailboxPassword'
+> {
+  return {
+    stalwartJmapUrl: (e.STALWART_JMAP_URL ?? '') as string,
+    stalwartAdminUser: (e.STALWART_ADMIN_USER ?? 'admin') as string,
+    stalwartAdminSecret: (e.STALWART_ADMIN_SECRET ?? '') as string,
+    mailDomain: (e.MAIL_DOMAIN ?? 'devandre.sbs') as string,
+    defaultMailboxPassword: (e.DEFAULT_MAILBOX_PASSWORD ?? '') as string,
+  };
+}
+
+function loadLifecycle(e: Env): AppConfig['lifecycle'] {
+  return {
+    natsUrl: (e.HR_NATS_URL ?? '') as string,
+    natsStream: (e.HR_LIFECYCLE_STREAM ?? 'HR_LIFECYCLE') as string,
+    natsSubject: (e.HR_LIFECYCLE_SUBJECT ?? 'hr.lifecycle.>') as string,
+    signingKey: (e.HR_LIFECYCLE_SIGNING_KEY ?? '') as string,
+    workplaceGroup: (e.WORKPLACE_GROUP ?? 'Workplace Users') as string,
+    ...loadLifecycleMail(e),
+  };
+}
+
+function loadIntegration(e: Env): AppConfig['integration'] {
+  return {
+    serviceKey: (e.IAM_SERVICE_KEY ?? '') as string,
+    n8nOnboardWebhookUrl: (e.N8N_ONBOARD_WEBHOOK_URL ?? '') as string,
+    iamCallbackBaseUrl: (e.IAM_CALLBACK_BASE_URL ?? '') as string,
+  };
+}
+
 export function loadConfig(): AppConfig {
   const e = process.env;
   return {
@@ -161,69 +253,16 @@ export function loadConfig(): AppConfig {
     port: Number(e.PORT ?? 3000),
     frontendUrl: e.FRONTEND_URL ?? 'http://localhost:3001',
     sessionSecret: e.SESSION_SECRET as string,
-    database: {
-      host: e.DATABASE_HOST as string,
-      port: Number(e.DATABASE_PORT ?? 5432),
-      user: e.DATABASE_USER as string,
-      password: e.DATABASE_PASSWORD as string,
-      name: e.DATABASE_NAME as string,
-    },
-    oidc: {
-      issuer: e.AUTHENTIK_ISSUER as string,
-      authorizationURL: e.AUTHENTIK_AUTH_URL as string,
-      tokenURL: e.AUTHENTIK_TOKEN_URL as string,
-      userInfoURL: e.AUTHENTIK_USERINFO_URL as string,
-      clientID: e.AUTHENTIK_CLIENT_ID as string,
-      clientSecret: e.AUTHENTIK_CLIENT_SECRET as string,
-      callbackURL: e.AUTHENTIK_CALLBACK_URL as string,
-      scope: e.AUTHENTIK_SCOPE ?? 'openid profile email groups',
-      // Real Authentik taxonomy — the admin group is "Platform Admins" (the old `ktayl-admin`
-      // default never existed and 401'd every login; the overlay already sets this).
-      adminGroup: e.ADMIN_GROUP ?? 'Platform Admins',
-      staffGroup: (e.STAFF_GROUP ?? '') as string, // empty = admit any authenticated user (S008)
-    },
-    directory: {
-      authentikApiUrl: (e.AUTHENTIK_API_URL ?? authentikApiFromIssuer(e.AUTHENTIK_ISSUER)) as string,
-      authentikApiToken: (e.AUTHENTIK_API_TOKEN ?? '') as string,
-      authentikCredentialToken: (e.AUTHENTIK_CREDENTIAL_TOKEN ?? '') as string,
-      erpnextUrl: (e.ERPNEXT_URL ?? '') as string,
-      erpnextApiKey: (e.ERPNEXT_API_KEY ?? '') as string,
-      erpnextApiSecret: (e.ERPNEXT_API_SECRET ?? '') as string,
-      fallbackApprover: (e.FALLBACK_APPROVER ?? '') as string,
-      securityApprover: (e.SECURITY_APPROVER ?? e.FALLBACK_APPROVER ?? '') as string,
-    },
-    vault: {
-      addr: (e.VAULT_ADDR ?? '') as string,
-      token: (e.VAULT_TOKEN ?? '') as string,
-      mount: (e.VAULT_KV_MOUNT ?? 'secret') as string,
-      basePath: (e.VAULT_SA_BASE_PATH ?? 'platform/service-accounts') as string,
-    },
+    database: loadDatabase(e),
+    oidc: loadOidc(e),
+    directory: loadDirectory(e),
+    vault: loadVault(e),
     workflow: {
       allowApproverOverride: (e.ALLOW_APPROVER_OVERRIDE ?? 'false') === 'true',
     },
-    sync: {
-      exclusiveGroups: String(e.RECONCILE_EXCLUSIVE_GROUPS ?? '')
-        .split(',')
-        .map((g) => g.trim())
-        .filter(Boolean),
-    },
-    lifecycle: {
-      natsUrl: (e.HR_NATS_URL ?? '') as string,
-      natsStream: (e.HR_LIFECYCLE_STREAM ?? 'HR_LIFECYCLE') as string,
-      natsSubject: (e.HR_LIFECYCLE_SUBJECT ?? 'hr.lifecycle.>') as string,
-      signingKey: (e.HR_LIFECYCLE_SIGNING_KEY ?? '') as string,
-      workplaceGroup: (e.WORKPLACE_GROUP ?? 'Workplace Users') as string,
-      stalwartJmapUrl: (e.STALWART_JMAP_URL ?? '') as string,
-      stalwartAdminUser: (e.STALWART_ADMIN_USER ?? 'admin') as string,
-      stalwartAdminSecret: (e.STALWART_ADMIN_SECRET ?? '') as string,
-      mailDomain: (e.MAIL_DOMAIN ?? 'devandre.sbs') as string,
-      defaultMailboxPassword: (e.DEFAULT_MAILBOX_PASSWORD ?? '') as string,
-    },
-    integration: {
-      serviceKey: (e.IAM_SERVICE_KEY ?? '') as string,
-      n8nOnboardWebhookUrl: (e.N8N_ONBOARD_WEBHOOK_URL ?? '') as string,
-      iamCallbackBaseUrl: (e.IAM_CALLBACK_BASE_URL ?? '') as string,
-    },
+    sync: loadSync(e),
+    lifecycle: loadLifecycle(e),
+    integration: loadIntegration(e),
   };
 }
 

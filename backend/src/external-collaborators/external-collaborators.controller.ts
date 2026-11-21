@@ -85,7 +85,7 @@ export class ExternalCollaboratorsController {
     // ALLOW_APPROVER_OVERRIDE (dev) lets an admin act as a named sponsor/Security approver to demo the
     // four-eyes; the server still rejects self-approval + any non-assigned approver. Actor is audited.
     const approver = this.allowOverride && dto.approver ? dto.approver : actor;
-    return this.workflow.decide(id, approver, dto.decision, dto.comment, actor);
+    return this.workflow.decide({ requestId: id, approver: approver, decision: dto.decision, comment: dto.comment, actor: actor });
   }
 
   /** Re-run provisioning for an approved collaborator whose auto-provision failed (S027). Idempotent, audited. */
