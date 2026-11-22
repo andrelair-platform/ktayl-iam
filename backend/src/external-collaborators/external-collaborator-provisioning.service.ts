@@ -24,6 +24,7 @@ import { WorkplaceAccessService } from '../workplace/workplace-access.service.js
 export class ExternalCollaboratorProvisioningService {
   private readonly log = new Logger(ExternalCollaboratorProvisioningService.name);
 
+  // eslint-disable-next-line max-params -- NestJS DI constructor (injected dependencies, cannot be an options object)
   constructor(
     private readonly collaborators: ExternalCollaboratorService,
     private readonly authentik: AuthentikClient,
@@ -40,12 +41,7 @@ export class ExternalCollaboratorProvisioningService {
       this.log.log(`external collaborator "${c.name}" already active — provisioning is a no-op`);
       return c;
     }
-    if (c.status === 'disabled') {
-      throw new ConflictException(`external collaborator "${c.name}" is disabled and cannot be provisioned`);
-    }
-    if (!this.authentik.canProvision) {
-      throw new ConflictException('Authentik is not configured — cannot provision an external collaborator');
-    }
+    this.assertProvisionable(c);
 
     try {
       // ADR-015/016 — the WORKPLACE tier, identical to an employee. Allocate the company mailbox FIRST: under
@@ -72,7 +68,7 @@ export class ExternalCollaboratorProvisioningService {
         workplaceEmail,
         mailboxProvisioned,
       });
-      await this.audit.record(actor, 'external_collaborator.provisioned', 'external_collaborator', c.id, {
+      await this.audit.record({ actor: actor, action: 'external_collaborator.provisioned', entityType: 'external_collaborator', entityId: c.id, detail: {
         collaborator: c.name,
         authentikUsername: c.name,
         groups: c.groupRefs,
@@ -80,7 +76,7 @@ export class ExternalCollaboratorProvisioningService {
         mailboxProvisioned, // ADR-015 company mailbox (address not audited — minimal PII)
         expiresAt: c.expiresAt?.toISOString() ?? null,
         inviteIssued: invite !== null, // the link value is never stored/audited
-      });
+      } });
       this.log.log(
         `provisioned external collaborator "${c.name}" → business [${c.groupRefs.join(', ')}] + workplace birthright, mailbox ${workplaceEmail} (auto-provisions via LDAP), invite ${invite ? 'issued' : 'skipped'}`,
       );
@@ -90,13 +86,32 @@ export class ExternalCollaboratorProvisioningService {
       await this.events?.emitOnboarded(buildOnboardedEvent(updated));
       return updated;
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      await this.audit.record(actor, 'external_collaborator.provision_failed', 'external_collaborator', c.id, {
-        collaborator: c.name,
-        error: message,
-      });
-      this.log.error(`provisioning "${c.name}" failed: ${message}`);
+      await this.auditProvisionFailure(c, actor, err);
       throw err;
     }
+  }
+
+  /** Reject a collaborator that can't be provisioned (disabled, or Authentik unconfigured). */
+  private assertProvisionable(c: ExternalCollaborator): void {
+    if (c.status === 'disabled') {
+      throw new ConflictException(`external collaborator "${c.name}" is disabled and cannot be provisioned`);
+    }
+    if (!this.authentik.canProvision) {
+      throw new ConflictException('Authentik is not configured — cannot provision an external collaborator');
+    }
+  }
+
+  /** Audit + log a provisioning failure (the caller re-throws). */
+  private async auditProvisionFailure(
+    c: ExternalCollaborator,
+    actor: string,
+    err: unknown,
+  ): Promise<void> {
+    const message = err instanceof Error ? err.message : String(err);
+    await this.audit.record({ actor: actor, action: 'external_collaborator.provision_failed', entityType: 'external_collaborator', entityId: c.id, detail: {
+      collaborator: c.name,
+      error: message,
+    } });
+    this.log.error(`provisioning "${c.name}" failed: ${message}`);
   }
 }

@@ -36,11 +36,13 @@ describe('ExternalCollaboratorService.create', () => {
     const c = await svc.create(INPUT);
     expect(c.status).toBe('requested');
     expect(audit.record).toHaveBeenCalledWith(
-      ACTOR,
-      'external_collaborator.created',
-      'external_collaborator',
-      'ec-1',
-      expect.objectContaining({ name: 'ext-acme-jdoe', sponsor: '100006' }),
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'external_collaborator.created',
+        entityType: 'external_collaborator',
+        entityId: 'ec-1',
+        detail: expect.objectContaining({ name: 'ext-acme-jdoe', sponsor: '100006' }),
+      }),
     );
   });
 
@@ -54,12 +56,12 @@ describe('ExternalCollaboratorService.create', () => {
     const { svc, repo, audit } = makeService();
     await svc.create({ ...INPUT, company: "Acme Pentest Ltd" });
     expect(repo.create.mock.calls[0][0].company).toBe("Acme Pentest Ltd");
-    expect(audit.record.mock.calls[0][4]).toMatchObject({ company: "Acme Pentest Ltd" });
+    expect(audit.record.mock.calls[0][0].detail).toMatchObject({ company: "Acme Pentest Ltd" });
 
     const { svc: svc2, repo: repo2, audit: audit2 } = makeService();
     await svc2.create(INPUT); // no company
     expect(repo2.create.mock.calls[0][0].company).toBeNull();
-    expect(audit2.record.mock.calls[0][4]).toMatchObject({ company: "freelance" });
+    expect(audit2.record.mock.calls[0][0].detail).toMatchObject({ company: "freelance" });
   });
 
   it('never stores a credential value (only the governance shape)', async () => {
@@ -77,11 +79,13 @@ describe('ExternalCollaboratorService.setHrWorkerRef', () => {
     const out = await svc.setHrWorkerRef('ec-1', ' HR-EMP-00042 ', ACTOR);
     expect(out.hrWorkerRef).toBe('HR-EMP-00042');
     expect(audit.record).toHaveBeenCalledWith(
-      ACTOR,
-      'external_collaborator.hr_worker_bound',
-      'external_collaborator',
-      'ec-1',
-      { hrWorkerRef: 'HR-EMP-00042' },
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'external_collaborator.hr_worker_bound',
+        entityType: 'external_collaborator',
+        entityId: 'ec-1',
+        detail: { hrWorkerRef: 'HR-EMP-00042' },
+      }),
     );
 
     const { svc: s2, repo: r2, audit: a2 } = makeService();
@@ -106,11 +110,13 @@ describe('ExternalCollaboratorService.updateStatus', () => {
     const out = await svc.updateStatus('ec-1', 'expired', ACTOR);
     expect(out.status).toBe('expired');
     expect(audit.record).toHaveBeenCalledWith(
-      ACTOR,
-      'external_collaborator.expired',
-      'external_collaborator',
-      'ec-1',
-      {},
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'external_collaborator.expired',
+        entityType: 'external_collaborator',
+        entityId: 'ec-1',
+        detail: {},
+      }),
     );
   });
 });
@@ -124,7 +130,15 @@ describe('ExternalCollaboratorService.renew', () => {
     expect(days).toBeLessThanOrEqual(180.1);
     expect(days).toBeGreaterThan(179);
     expect(out.lastRecertifiedAt).toBeInstanceOf(Date);
-    expect(audit.record).toHaveBeenCalledWith(ACTOR, 'external_collaborator.renewed', 'external_collaborator', 'ec-1', expect.objectContaining({ days: 180 }));
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: ACTOR,
+        action: 'external_collaborator.renewed',
+        entityType: 'external_collaborator',
+        entityId: 'ec-1',
+        detail: expect.objectContaining({ days: 180 }),
+      }),
+    );
   });
 
   it('refuses to renew a non-active collaborator (409)', async () => {

@@ -61,15 +61,8 @@ export function pickProfile(args: any[]): any {
  * `staffGroup` is configured, membership in it (or the admin group) is REQUIRED — else any
  * authenticated user passes. Exported so it's unit-testable against the exact passport arg shapes.
  */
-export function authorizeFromVerifyArgs(args: any[], adminGroup: string, staffGroup = ''): AuthUser {
-  const groups = collectGroups(args);
-  const profile = pickProfile(args);
-  const isAdmin = groups.includes(adminGroup);
-  if (staffGroup && !isAdmin && !groups.includes(staffGroup)) {
-    throw new UnauthorizedException(
-      `Not authorised for the Access Governance console (membership of "${staffGroup}" required).`,
-    );
-  }
+/** Shape the AuthUser from the resolved profile object (the `??` fallback chains isolated here). */
+function shapeAuthUser(profile: any, groups: string[], isAdmin: boolean): AuthUser {
   return {
     id: profile.id,
     username: profile.username ?? profile.displayName ?? profile.id,
@@ -77,6 +70,17 @@ export function authorizeFromVerifyArgs(args: any[], adminGroup: string, staffGr
     groups,
     isAdmin,
   };
+}
+
+export function authorizeFromVerifyArgs(args: any[], adminGroup: string, staffGroup = ''): AuthUser {
+  const groups = collectGroups(args);
+  const isAdmin = groups.includes(adminGroup);
+  if (staffGroup && !isAdmin && !groups.includes(staffGroup)) {
+    throw new UnauthorizedException(
+      `Not authorised for the Access Governance console (membership of "${staffGroup}" required).`,
+    );
+  }
+  return shapeAuthUser(pickProfile(args), groups, isAdmin);
 }
 
 /**

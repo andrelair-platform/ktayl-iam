@@ -31,6 +31,7 @@ export class SyncService {
   private lastReconcile: ReconcileReport | null = null;
   private readonly exclusiveGroups: Set<string>;
 
+  // eslint-disable-next-line max-params -- NestJS DI constructor (injected dependencies, cannot be an options object)
   constructor(
     @InjectRepository(Assignment)
     private readonly assignments: Repository<Assignment>,
@@ -53,17 +54,17 @@ export class SyncService {
     try {
       await this.ak.addUserToGroup(assignment.userId, role.authentikGroupRef);
       await this.markSynced(assignment);
-      await this.audit.record('system', 'assignment.synced', 'assignment', assignment.id, {
+      await this.audit.record({ actor: 'system', action: 'assignment.synced', entityType: 'assignment', entityId: assignment.id, detail: {
         user: assignment.userId,
         group: role.authentikGroupRef,
-      });
+      } });
     } catch (e) {
       await this.markPending(assignment, String(e));
-      await this.audit.record('system', 'assignment.sync_failed', 'assignment', assignment.id, {
+      await this.audit.record({ actor: 'system', action: 'assignment.sync_failed', entityType: 'assignment', entityId: assignment.id, detail: {
         user: assignment.userId,
         group: role.authentikGroupRef,
         error: String(e),
-      });
+      } });
       throw e;
     }
   }
@@ -73,10 +74,10 @@ export class SyncService {
     const role = assignment.role ?? (await this.roles.findOneByOrFail({ id: assignment.roleId }));
     if (!this.ak.configured) return;
     await this.ak.removeUserFromGroup(assignment.userId, role.authentikGroupRef);
-    await this.audit.record('system', 'assignment.unsynced', 'assignment', assignment.id, {
+    await this.audit.record({ actor: 'system', action: 'assignment.unsynced', entityType: 'assignment', entityId: assignment.id, detail: {
       user: assignment.userId,
       group: role.authentikGroupRef,
-    });
+    } });
   }
 
   private async markSynced(a: Assignment): Promise<void> {
@@ -141,33 +142,47 @@ export class SyncService {
     const changes: ReconcileReport['changes'] = [];
     let applied = 0;
     for (const c of drift) {
-      // SAFETY: 're-add missing' always heals (the DB granted it). 'remove extraneous' only acts on
-      // groups the platform EXCLUSIVELY owns — otherwise we'd risk nuking a hand-managed group's
-      // membership (e.g. Platform Admins). Non-exclusive removes are ALERTED, not applied.
-      const act = c.op === 'add' || this.exclusiveGroups.has(c.group);
-      let ok = true;
-      if (act) {
-        try {
-          if (c.op === 'add') await this.ak.addUserToGroup(c.user, c.group);
-          else await this.ak.removeUserFromGroup(c.user, c.group);
-          applied++;
-        } catch (e) {
-          ok = false;
-          this.log.warn(`reconcile ${c.op} ${c.user}@${c.group} failed: ${e}`);
-        }
-      }
-      changes.push({ ...c, ok: act ? ok : true });
-      await this.audit.record('system', act ? 'sync.drift_healed' : 'sync.drift_detected', 'group', c.group, {
-        user: c.user,
-        op: c.op,
-        reason: c.reason,
-        acted: act,
-        note: act ? undefined : 'extraneous membership on a non-exclusive group — alert only, not removed',
-        ok,
-      });
+      const outcome = await this.applyDriftChange(c);
+      applied += outcome.appliedDelta;
+      changes.push({ ...c, ok: outcome.act ? outcome.ok : true });
     }
 
     this.lastReconcile = { ran: true, driftCount: drift.length, applied, changes, at };
     return this.lastReconcile;
+  }
+
+  /**
+   * Apply (or alert-only) a single drift change, then audit it. Returns whether it acted, the per-op
+   * success flag, and how much to add to the applied counter. (Extracted from `reconcile` to keep the
+   * control flow byte-identical while lowering its complexity.)
+   */
+  private async applyDriftChange(
+    c: ReturnType<typeof computeDrift>[number],
+  ): Promise<{ act: boolean; ok: boolean; appliedDelta: number }> {
+    // SAFETY: 're-add missing' always heals (the DB granted it). 'remove extraneous' only acts on
+    // groups the platform EXCLUSIVELY owns — otherwise we'd risk nuking a hand-managed group's
+    // membership (e.g. Platform Admins). Non-exclusive removes are ALERTED, not applied.
+    const act = c.op === 'add' || this.exclusiveGroups.has(c.group);
+    let ok = true;
+    let appliedDelta = 0;
+    if (act) {
+      try {
+        if (c.op === 'add') await this.ak.addUserToGroup(c.user, c.group);
+        else await this.ak.removeUserFromGroup(c.user, c.group);
+        appliedDelta = 1;
+      } catch (e) {
+        ok = false;
+        this.log.warn(`reconcile ${c.op} ${c.user}@${c.group} failed: ${e}`);
+      }
+    }
+    await this.audit.record({ actor: 'system', action: act ? 'sync.drift_healed' : 'sync.drift_detected', entityType: 'group', entityId: c.group, detail: {
+      user: c.user,
+      op: c.op,
+      reason: c.reason,
+      acted: act,
+      note: act ? undefined : 'extraneous membership on a non-exclusive group — alert only, not removed',
+      ok,
+    } });
+    return { act, ok, appliedDelta };
   }
 }

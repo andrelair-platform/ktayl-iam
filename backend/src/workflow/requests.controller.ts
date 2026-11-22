@@ -113,7 +113,7 @@ export class RequestsController {
     // and any approver not assigned to a leg, so the control is never bypassed — only impersonated
     // in dev. The real signed-in user is always recorded as the audit `actor`.
     const approver = this.allowOverride && dto.approver ? dto.approver : actor;
-    return this.workflow.decide(id, approver, dto.decision, dto.comment, actor);
+    return this.workflow.decide({ requestId: id, approver: approver, decision: dto.decision, comment: dto.comment, actor: actor });
   }
 
   @Post(':id/cancel')

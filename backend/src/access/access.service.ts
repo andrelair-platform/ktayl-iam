@@ -48,6 +48,7 @@ export interface MyAccessRow {
 export class AccessService {
   private readonly workplaceGroup: string;
 
+  // eslint-disable-next-line max-params -- NestJS DI constructor (injected dependencies, cannot be an options object)
   constructor(
     @InjectRepository(Assignment)
     private readonly assignments: Repository<Assignment>,

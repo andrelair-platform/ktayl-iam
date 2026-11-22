@@ -60,11 +60,13 @@ describe('ServiceAccountWorkflowService.fileRequest', () => {
     expect(req).toMatchObject({ securityApprover: SECURITY, ownerApprover: OWNER, status: 'pending' });
     expect(requests.save).toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(
-      ADMIN,
-      'service_account.requested',
-      'service_account_request',
-      'req-1',
-      expect.objectContaining({ serviceAccount: 'ktayl-qa-finance', securityApprover: SECURITY }),
+      expect.objectContaining({
+        actor: ADMIN,
+        action: 'service_account.requested',
+        entityType: 'service_account_request',
+        entityId: 'req-1',
+        detail: expect.objectContaining({ serviceAccount: 'ktayl-qa-finance', securityApprover: SECURITY }),
+      }),
     );
   });
 
@@ -94,23 +96,23 @@ describe('ServiceAccountWorkflowService.decide', () => {
   it('needs BOTH legs — one approval stays pending, both → approved', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    const afterOne = await svc.decide('req-1', SECURITY, 'approved', undefined, SECURITY);
+    const afterOne = await svc.decide({ requestId: 'req-1', approver: SECURITY, decision: 'approved', comment: undefined, actor: SECURITY });
     expect(afterOne.status).toBe('pending');
-    const afterBoth = await svc.decide('req-1', OWNER, 'approved', undefined, OWNER);
+    const afterBoth = await svc.decide({ requestId: 'req-1', approver: OWNER, decision: 'approved', comment: undefined, actor: OWNER });
     expect(afterBoth.status).toBe('approved');
   });
 
   it('either denial rejects the whole request', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    const r = await svc.decide('req-1', SECURITY, 'denied', 'not justified', SECURITY);
+    const r = await svc.decide({ requestId: 'req-1', approver: SECURITY, decision: 'denied', comment: 'not justified', actor: SECURITY });
     expect(r.status).toBe('denied');
   });
 
   it('rejects self-approval (approver == requester)', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    await expect(svc.decide('req-1', ADMIN, 'approved', undefined, ADMIN)).rejects.toBeInstanceOf(
+    await expect(svc.decide({ requestId: 'req-1', approver: ADMIN, decision: 'approved', comment: undefined, actor: ADMIN })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
@@ -118,7 +120,7 @@ describe('ServiceAccountWorkflowService.decide', () => {
   it('rejects a non-assigned approver', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue(shared);
-    await expect(svc.decide('req-1', '999999', 'approved', undefined, '999999')).rejects.toBeInstanceOf(
+    await expect(svc.decide({ requestId: 'req-1', approver: '999999', decision: 'approved', comment: undefined, actor: '999999' })).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
@@ -126,7 +128,7 @@ describe('ServiceAccountWorkflowService.decide', () => {
   it('rejects deciding an already-decided request (409)', async () => {
     const { svc, requests } = makeService();
     requests.findOne.mockResolvedValue({ ...shared, status: 'approved' });
-    await expect(svc.decide('req-1', SECURITY, 'approved', undefined, SECURITY)).rejects.toBeInstanceOf(
+    await expect(svc.decide({ requestId: 'req-1', approver: SECURITY, decision: 'approved', comment: undefined, actor: SECURITY })).rejects.toBeInstanceOf(
       ConflictException,
     );
   });
