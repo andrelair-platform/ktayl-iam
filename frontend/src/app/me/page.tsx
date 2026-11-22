@@ -40,6 +40,12 @@ function Stat({
   );
 }
 
+/** The welcome suffix: ", <display name>" when signed in, else "". */
+function greeting(myName: string, displayName?: string): string {
+  if (!myName) return "";
+  return `, ${displayName ?? myName}`;
+}
+
 export default function Dashboard() {
   const meState = useMe();
   const me = meState.status === "authed" ? meState.me : null;
@@ -78,7 +84,7 @@ export default function Dashboard() {
       }
     >
       <p className="mb-5 text-sm text-muted-foreground">
-        Welcome{myName ? `, ${nameOf(myName) ?? myName}` : ""}. Request access to the tools you need, track
+        Welcome{greeting(myName, nameOf(myName))}. Request access to the tools you need, track
         it, and approve what&apos;s assigned to you.
       </p>
 

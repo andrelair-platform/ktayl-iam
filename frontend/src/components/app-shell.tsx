@@ -228,7 +228,7 @@ export function AppShell({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => {
-                    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).finally(
+                    void fetch("/api/auth/logout", { method: "POST", credentials: "include" }).finally(
                       () => {
                         // Full reload (not a client nav) after sign-out — resets all session-derived state.
                         // eslint-disable-next-line @next/next/no-location-assign-relative-destination

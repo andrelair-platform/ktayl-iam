@@ -81,12 +81,14 @@ const STEPS: Step[] = [
   { key: "active", label: "Active" },
 ];
 
+const legIs = (leg: Decision, v: "approved" | "denied") => leg?.decision === v;
+
 function stepState(r: EcRequest, c?: Collaborator) {
   if (c?.status === "active") return { activeIndex: 4, failed: false };
   if (r.status === "denied")
-    return { activeIndex: r.securityDecision?.decision === "denied" ? 1 : 2, failed: true };
-  const sec = r.securityDecision?.decision === "approved";
-  const spo = r.sponsorDecision?.decision === "approved";
+    return { activeIndex: legIs(r.securityDecision, "denied") ? 1 : 2, failed: true };
+  const sec = legIs(r.securityDecision, "approved");
+  const spo = legIs(r.sponsorDecision, "approved");
   if (sec && spo) return { activeIndex: 3, failed: false };
   if (sec) return { activeIndex: 2, failed: false };
   return { activeIndex: 1, failed: false };
@@ -491,7 +493,7 @@ function RowMenu({
               variant="brand"
               onClick={() => {
                 setConfirm(null);
-                run(
+                void run(
                   () => api(`/collaborators/${collaborator.id}/provision`, { method: "POST" }),
                   `Provisioned ${collaborator.name}`,
                 );

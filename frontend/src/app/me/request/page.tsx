@@ -9,7 +9,7 @@ import { useState } from "react";
 import { Info, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import { useAccessData } from "@/hooks/use-access-data";
+import { useAccessData, type Application, type Role } from "@/hooks/use-access-data";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -31,6 +31,11 @@ interface BasketItem {
   appName: string;
 }
 
+/** The roles of the currently-selected application (empty when none is picked). */
+function rolesFor(apps: Application[], appId: string): Role[] {
+  return apps.find((a) => a.id === appId)?.roles ?? [];
+}
+
 export default function RequestAccessPage() {
   const router = useRouter();
   const { apps, loading, error } = useAccessData();
@@ -39,7 +44,7 @@ export default function RequestAccessPage() {
   const [basket, setBasket] = useState<BasketItem[]>([]);
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
-  const roles = apps.find((a) => a.id === appId)?.roles ?? [];
+  const roles = rolesFor(apps, appId);
 
   const addToBasket = () => {
     if (!roleId) return;
