@@ -77,7 +77,7 @@ const STEPS: Step[] = [
   { key: "active", label: "Active" },
 ];
 
-const legIs = (leg: Decision, v: string) => leg?.decision === v;
+const legIs = (leg: Decision, v: "approved" | "denied") => leg?.decision === v;
 
 function stepState(req: SaRequest, acc?: ServiceAccount): { activeIndex: number; failed: boolean } {
   if (acc?.status === "active") return { activeIndex: 4, failed: false };
