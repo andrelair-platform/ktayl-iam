@@ -6,6 +6,24 @@ export interface Step {
   label: string;
 }
 
+/** The step-circle colour classes for a given done/current/failed state. */
+function circleClass(done: boolean, current: boolean, failed: boolean): string {
+  return cn(
+    "grid size-6 place-items-center rounded-full border text-[11px] font-semibold",
+    done && "border-success bg-success text-success-foreground",
+    current && !failed && "border-brand bg-brand text-brand-foreground",
+    current && failed && "border-destructive bg-destructive text-destructive-foreground",
+    !done && !current && "border-border bg-muted text-muted-foreground",
+  );
+}
+
+/** The step-circle glyph: check when done, X when the current step failed, else its number. */
+function stepIcon(done: boolean, current: boolean, failed: boolean, n: number) {
+  if (done) return <Check className="size-3.5" />;
+  if (current && failed) return <X className="size-3.5" />;
+  return n;
+}
+
 /**
  * The request lifecycle as a horizontal stepper — steps before `activeIndex` are done (success), the
  * active one is current (brand, or destructive if `failed`), the rest upcoming. Makes "where is this
@@ -29,22 +47,10 @@ export function StatusStepper({
           <li key={s.key} className={cn("flex items-center", i < steps.length - 1 && "flex-1")}>
             <div className="flex flex-col items-center gap-1.5">
               <span
-                className={cn(
-                  "grid size-6 place-items-center rounded-full border text-[11px] font-semibold",
-                  done && "border-success bg-success text-success-foreground",
-                  current && !failed && "border-brand bg-brand text-brand-foreground",
-                  current && failed && "border-destructive bg-destructive text-destructive-foreground",
-                  !done && !current && "border-border bg-muted text-muted-foreground",
-                )}
+                className={circleClass(done, current, failed)}
                 aria-current={current ? "step" : undefined}
               >
-                {done ? (
-                  <Check className="size-3.5" />
-                ) : current && failed ? (
-                  <X className="size-3.5" />
-                ) : (
-                  i + 1
-                )}
+                {stepIcon(done, current, failed, i + 1)}
               </span>
               <span
                 className={cn(

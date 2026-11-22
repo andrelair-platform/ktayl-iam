@@ -77,14 +77,16 @@ const STEPS: Step[] = [
   { key: "active", label: "Active" },
 ];
 
+const legIs = (leg: Decision, v: string) => leg?.decision === v;
+
 function stepState(req: SaRequest, acc?: ServiceAccount): { activeIndex: number; failed: boolean } {
   if (acc?.status === "active") return { activeIndex: 4, failed: false };
   if (req.status === "denied") {
-    const idx = req.securityDecision?.decision === "denied" ? 1 : 2;
+    const idx = legIs(req.securityDecision, "denied") ? 1 : 2;
     return { activeIndex: idx, failed: true };
   }
-  const sec = req.securityDecision?.decision === "approved";
-  const own = req.ownerDecision?.decision === "approved";
+  const sec = legIs(req.securityDecision, "approved");
+  const own = legIs(req.ownerDecision, "approved");
   if (sec && own) return { activeIndex: 3, failed: false };
   if (sec) return { activeIndex: 2, failed: false };
   return { activeIndex: 1, failed: false };
@@ -502,7 +504,7 @@ function AccountMenu({
               variant="brand"
               onClick={() => {
                 setConfirmProvision(false);
-                run(
+                void run(
                   () => api(`/service-accounts/${account.id}/provision`, { method: "POST" }),
                   `Provisioned ${account.name}`,
                 );
